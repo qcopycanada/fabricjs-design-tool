@@ -121,6 +121,29 @@ npm run dev
 - `npm run lint:fix` - Auto-fix linting issues
 - `npm run clean` - Clean build artifacts
 
+### Deployment Base Path
+- Default production base is `/` (recommended for Vercel and most root-domain deployments).
+- If you deploy under a subpath (for example GitHub Pages), set `VITE_BASE_PATH` at build time.
+
+Examples:
+```bash
+# Root deployment (Vercel)
+npm run build
+
+# Subpath deployment
+VITE_BASE_PATH=/fabricjs-design-tool/ npm run build
+```
+
+### Vercel Deployment Notes
+- `vercel.json` is configured for static Vite deployment with output directory `dist`.
+- Ensure `VITE_BASE_PATH` is not set for root-domain hosting (for example `https://editor.qcopy.ca`).
+- If you previously deployed with a different base path or old asset hashes, redeploy with cache cleared.
+
+Quick recovery checklist for asset 404s:
+1. Redeploy with **Clear build cache** enabled in Vercel.
+2. Purge custom-domain CDN cache (if Cloudflare/proxy is in front of Vercel).
+3. Hard refresh browser (`Ctrl+Shift+R`) after deployment.
+
 ### 🚀 Automated Deployment
 This project uses GitHub Actions for automated deployment:
 
