@@ -8,6 +8,7 @@ interface RightSidebarProps {
   selectedObject: any;
   canvas: any;
   onObjectUpdate?: () => void;
+  onLockStateChange?: () => void;
   updateCanvasObjects?: () => void;
   updateCanvasDimensions?: (width: number, height: number) => void;
   canvasDimensions?: { width: number; height: number };
@@ -15,6 +16,7 @@ interface RightSidebarProps {
   onCanvasCountChange?: (count: number, newCanvasName?: string) => void;
   canvasFormat?: 'portrait' | 'landscape';
   onCanvasFormatChange?: (format: 'portrait' | 'landscape') => void;
+  editorMode?: 'dev' | 'prod';
   updateQRCodeColors?: (qrObject: FabricImage, foregroundColor: string, backgroundColor: string) => void;
   alignmentGuides?: {
     config: AlignmentGuidesConfig;
@@ -27,6 +29,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   selectedObject,
   canvas,
   onObjectUpdate,
+  onLockStateChange,
   updateCanvasObjects,
   updateCanvasDimensions,
   canvasDimensions,
@@ -34,6 +37,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   onCanvasCountChange,
   canvasFormat,
   onCanvasFormatChange,
+  editorMode = 'dev',
   updateQRCodeColors,
   alignmentGuides
 }) => {
@@ -140,7 +144,31 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
     }
   };
 
+  const updateObjectLockState = (updates: Record<string, boolean>) => {
+    if (!selectedObject) return;
+
+    const targets = selectedObject.type === 'activeSelection' && typeof selectedObject.getObjects === 'function'
+      ? selectedObject.getObjects()
+      : [selectedObject];
+
+    targets.forEach((obj: any) => {
+      obj.set(updates);
+      if (typeof obj.setCoords === 'function') {
+        obj.setCoords();
+      }
+    });
+
+    selectedObject.set(updates);
+    canvas?.renderAll();
+    triggerUpdate();
+    onLockStateChange?.();
+  };
+
   const updateCanvasSize = () => {
+    if (editorMode === 'prod') {
+      return;
+    }
+
     if (updateCanvasDimensions) {
       // Use the parent's updateCanvasDimensions function
       updateCanvasDimensions(canvasWidth, canvasHeight);
@@ -153,6 +181,10 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   };
 
   const applyCanvasCount = () => {
+    if (editorMode === 'prod') {
+      return;
+    }
+
     const normalizedCount = Math.max(1, Math.min(20, Number(localCanvasCount) || 1));
     setLocalCanvasCount(normalizedCount);
 
@@ -461,342 +493,365 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                     {(!selectedObject.type || !['text', 'rect', 'line', 'image', 'circle', 'triangle', 'pentagon', 'hexagon', 'star'].includes(selectedObject.type)) && 'Object'}
                   </h4>
                   <div className="space-y-3">
-                    {/* Position */}
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <div className="flex-1">
-                          <label className="block text-xs text-gray-400 mb-1">X-axis</label>
-                          <input
-                            type="number"
-                            value={Math.round(selectedObject.left || 0)}
-                            onChange={(e) => updateObjectProperty('left', Number(e.target.value))}
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                          />
+                    {!selectedObject.hideObjectActions && (
+                      <>
+                        {/* Position */}
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <div className="flex-1">
+                              <label className="block text-xs text-gray-400 mb-1">X-axis</label>
+                              <input
+                                type="number"
+                                value={Math.round(selectedObject.left || 0)}
+                                onChange={(e) => updateObjectProperty('left', Number(e.target.value))}
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <label className="block text-xs text-gray-400 mb-1">Y-axis</label>
+                              <input
+                                type="number"
+                                value={Math.round(selectedObject.top || 0)}
+                                onChange={(e) => updateObjectProperty('top', Number(e.target.value))}
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                              />
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <label className="block text-xs text-gray-400 mb-1">Y-axis</label>
-                          <input
-                            type="number"
-                            value={Math.round(selectedObject.top || 0)}
-                            onChange={(e) => updateObjectProperty('top', Number(e.target.value))}
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Size - Different for different object types */}
-                    {selectedObject.type !== 'line' && (
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-400 mb-1">Width</label>
-                            <input
-                              type="number"
-                              value={Math.round(selectedObject.width * (selectedObject.scaleX || 1))}
-                              onChange={(e) => {
-                                const newWidth = Number(e.target.value);
-                                updateObjectProperty('scaleX', newWidth / selectedObject.width);
-                              }}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                            />
+                        {/* Size - Different for different object types */}
+                        {selectedObject.type !== 'line' && (
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <div className="flex-1">
+                                <label className="block text-xs text-gray-400 mb-1">Width</label>
+                                <input
+                                  type="number"
+                                  value={Math.round(selectedObject.width * (selectedObject.scaleX || 1))}
+                                  onChange={(e) => {
+                                    const newWidth = Number(e.target.value);
+                                    updateObjectProperty('scaleX', newWidth / selectedObject.width);
+                                  }}
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <label className="block text-xs text-gray-400 mb-1">Height</label>
+                                <input
+                                  type="number"
+                                  value={Math.round(selectedObject.height * (selectedObject.scaleY || 1))}
+                                  onChange={(e) => {
+                                    const newHeight = Number(e.target.value);
+                                    updateObjectProperty('scaleY', newHeight / selectedObject.height);
+                                  }}
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-400 mb-1">Height</label>
+                        )}
+
+                        {/* Rotation */}
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-2">Rotation</label>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="range"
+                              min="0"
+                              max="360"
+                              value={selectedObject.angle || 0}
+                              onChange={(e) => updateObjectProperty('angle', Number(e.target.value))}
+                              className="flex-1"
+                            />
                             <input
                               type="number"
-                              value={Math.round(selectedObject.height * (selectedObject.scaleY || 1))}
-                              onChange={(e) => {
-                                const newHeight = Number(e.target.value);
-                                updateObjectProperty('scaleY', newHeight / selectedObject.height);
-                              }}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                              min="0"
+                              max="360"
+                              value={Math.round(selectedObject.angle || 0)}
+                              onChange={(e) => updateObjectProperty('angle', Number(e.target.value))}
+                              className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
                             />
+                            <span className="text-xs text-gray-400">°</span>
                           </div>
                         </div>
-                      </div>
+
+                        {/* Opacity */}
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-2">Opacity</label>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.01"
+                              value={selectedObject.opacity || 1}
+                              onChange={(e) => updateObjectProperty('opacity', Number(e.target.value))}
+                              className="flex-1"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={Math.round((selectedObject.opacity || 1) * 100)}
+                              onChange={(e) => updateObjectProperty('opacity', Number(e.target.value) / 100)}
+                              className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                            />
+                            <span className="text-xs text-gray-400">%</span>
+                          </div>
+                        </div>
+
+                        {/* Transform Controls */}
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-2">Transform</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button 
+                              onClick={() => {
+                                updateObjectProperty('flipX', !selectedObject.flipX);
+                              }}
+                              className={`px-2 py-1.5 text-xs border rounded ${
+                                selectedObject.flipX 
+                                  ? 'bg-cyan-100 text-cyan-600 border-cyan-300' 
+                                  : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              Flip H
+                            </button>
+                            <button 
+                              onClick={() => {
+                                updateObjectProperty('flipY', !selectedObject.flipY);
+                              }}
+                              className={`px-2 py-1.5 text-xs border rounded ${
+                                selectedObject.flipY 
+                                  ? 'bg-cyan-100 text-cyan-600 border-cyan-300' 
+                                  : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              Flip V
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 mt-2">
+                            <button 
+                              onClick={() => {
+                                updateObjectProperty('angle', (selectedObject.angle || 0) - 90);
+                              }}
+                              className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              -90°
+                            </button>
+                            <button 
+                              onClick={() => {
+                                updateObjectProperty('angle', 0);
+                              }}
+                              className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              Reset
+                            </button>
+                            <button 
+                              onClick={() => {
+                                updateObjectProperty('angle', (selectedObject.angle || 0) + 90);
+                              }}
+                              className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              +90°
+                            </button>
+                          </div>
+                        </div>
+                      </>
                     )}
 
-                    {/* Rotation */}
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-2">Rotation</label>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="range"
-                          min="0"
-                          max="360"
-                          value={selectedObject.angle || 0}
-                          onChange={(e) => updateObjectProperty('angle', Number(e.target.value))}
-                          className="flex-1"
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          max="360"
-                          value={Math.round(selectedObject.angle || 0)}
-                          onChange={(e) => updateObjectProperty('angle', Number(e.target.value))}
-                          className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                        />
-                        <span className="text-xs text-gray-400">°</span>
-                      </div>
-                    </div>
-
-                    {/* Opacity */}
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-2">Opacity</label>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.01"
-                          value={selectedObject.opacity || 1}
-                          onChange={(e) => updateObjectProperty('opacity', Number(e.target.value))}
-                          className="flex-1"
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={Math.round((selectedObject.opacity || 1) * 100)}
-                          onChange={(e) => updateObjectProperty('opacity', Number(e.target.value) / 100)}
-                          className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                        />
-                        <span className="text-xs text-gray-400">%</span>
-                      </div>
-                    </div>
-
-                    {/* Transform Controls */}
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-2">Transform</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button 
-                          onClick={() => {
-                            updateObjectProperty('flipX', !selectedObject.flipX);
-                          }}
-                          className={`px-2 py-1.5 text-xs border rounded ${
-                            selectedObject.flipX 
-                              ? 'bg-cyan-100 text-cyan-600 border-cyan-300' 
-                              : 'text-gray-700 border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          Flip H
-                        </button>
-                        <button 
-                          onClick={() => {
-                            updateObjectProperty('flipY', !selectedObject.flipY);
-                          }}
-                          className={`px-2 py-1.5 text-xs border rounded ${
-                            selectedObject.flipY 
-                              ? 'bg-cyan-100 text-cyan-600 border-cyan-300' 
-                              : 'text-gray-700 border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          Flip V
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-3 gap-1 mt-2">
-                        <button 
-                          onClick={() => {
-                            updateObjectProperty('angle', (selectedObject.angle || 0) - 90);
-                          }}
-                          className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
-                        >
-                          -90°
-                        </button>
-                        <button 
-                          onClick={() => {
-                            updateObjectProperty('angle', 0);
-                          }}
-                          className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
-                        >
-                          Reset
-                        </button>
-                        <button 
-                          onClick={() => {
-                            updateObjectProperty('angle', (selectedObject.angle || 0) + 90);
-                          }}
-                          className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
-                        >
-                          +90°
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Object Actions */}
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-2">Object Actions</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button 
-                          onClick={() => {
-                            if (selectedObject && canvas) {
-                              // Use Fabric.js clone method properly
-                              selectedObject.clone().then((cloned: any) => {
-                                cloned.set({
-                                  left: (cloned.left || 0) + 10,
-                                  top: (cloned.top || 0) + 10,
-                                });
-                                canvas.add(cloned);
-                                canvas.setActiveObject(cloned);
-                                canvas.renderAll();
-                                
-                                // Update the objects list after canvas operations complete
-                                setTimeout(() => {
-                                  updateCanvasObjects?.();
-                                  triggerUpdate();
-                                }, 50);
-                              }).catch(() => {
-                                // Fallback to the callback-based clone method
-                                selectedObject.clone((cloned: any) => {
-                                  cloned.set({
-                                    left: (cloned.left || 0) + 10,
-                                    top: (cloned.top || 0) + 10,
+                    {!selectedObject.hideObjectActions && (
+                      <>
+                        {/* Object Actions */}
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-2">Object Actions</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button 
+                              onClick={() => {
+                                if (selectedObject && canvas) {
+                                  // Use Fabric.js clone method properly
+                                  selectedObject.clone().then((cloned: any) => {
+                                    cloned.set({
+                                      left: (cloned.left || 0) + 10,
+                                      top: (cloned.top || 0) + 10,
+                                    });
+                                    canvas.add(cloned);
+                                    canvas.setActiveObject(cloned);
+                                    canvas.renderAll();
+                                    
+                                    // Update the objects list after canvas operations complete
+                                    setTimeout(() => {
+                                      updateCanvasObjects?.();
+                                      triggerUpdate();
+                                    }, 50);
+                                  }).catch(() => {
+                                    // Fallback to the callback-based clone method
+                                    selectedObject.clone((cloned: any) => {
+                                      cloned.set({
+                                        left: (cloned.left || 0) + 10,
+                                        top: (cloned.top || 0) + 10,
+                                      });
+                                      canvas.add(cloned);
+                                      canvas.setActiveObject(cloned);
+                                      canvas.renderAll();
+                                      
+                                      setTimeout(() => {
+                                        updateCanvasObjects?.();
+                                        triggerUpdate();
+                                      }, 50);
+                                    });
                                   });
-                                  canvas.add(cloned);
-                                  canvas.setActiveObject(cloned);
+                                }
+                              }}
+                              className="flex items-center justify-center space-x-1 px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              <Copy size={12} />
+                              <span>Duplicate</span>
+                            </button>
+                            <button 
+                              onClick={() => {
+                                if (selectedObject && canvas) {
+                                  canvas.remove(selectedObject);
+                                  canvas.discardActiveObject();
                                   canvas.renderAll();
                                   
+                                  // Update the objects list after canvas operations complete
                                   setTimeout(() => {
                                     updateCanvasObjects?.();
                                     triggerUpdate();
                                   }, 50);
-                                });
-                              });
-                            }
-                          }}
-                          className="flex items-center justify-center space-x-1 px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
-                        >
-                          <Copy size={12} />
-                          <span>Duplicate</span>
-                        </button>
-                        <button 
-                          onClick={() => {
-                            if (selectedObject && canvas) {
-                              canvas.remove(selectedObject);
-                              canvas.discardActiveObject();
-                              canvas.renderAll();
-                              
-                              // Update the objects list after canvas operations complete
-                              setTimeout(() => {
-                                updateCanvasObjects?.();
-                                triggerUpdate();
-                              }, 50);
-                            }
-                          }}
-                          className="flex items-center justify-center space-x-1 px-2 py-1.5 text-xs text-red-600 border border-red-300 rounded hover:bg-red-50"
-                        >
-                          <Trash2 size={12} />
-                          <span>Delete</span>
-                        </button>
-                      </div>
-                    </div>
+                                }
+                              }}
+                              className="flex items-center justify-center space-x-1 px-2 py-1.5 text-xs text-red-600 border border-red-300 rounded hover:bg-red-50"
+                            >
+                              <Trash2 size={12} />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        </div>
 
-                    {/* Enhanced Layer Controls */}
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-2">Layer Position</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button 
-                          onClick={() => {
-                            if (selectedObject && canvas) {
-                              canvas.bringObjectForward(selectedObject);
-                              canvas.renderAll();
-                              triggerUpdate();
-                            }
-                          }}
-                          className="flex items-center justify-center space-x-1 px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
-                        >
-                          <MoveUp size={12} />
-                          <span>Forward</span>
-                        </button>
-                        <button 
-                          onClick={() => {
-                            if (selectedObject && canvas) {
-                              canvas.sendObjectBackwards(selectedObject);
-                              canvas.renderAll();
-                              triggerUpdate();
-                            }
-                          }}
-                          className="flex items-center justify-center space-x-1 px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
-                        >
-                          <MoveDown size={12} />
-                          <span>Backward</span>
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <button 
-                          onClick={() => {
-                            if (selectedObject && canvas) {
-                              canvas.bringObjectToFront(selectedObject);
-                              canvas.renderAll();
-                              triggerUpdate();
-                            }
-                          }}
-                          className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
-                        >
-                          To Front
-                        </button>
-                        <button 
-                          onClick={() => {
-                            if (selectedObject && canvas) {
-                              canvas.sendObjectToBack(selectedObject);
-                              canvas.renderAll();
-                              triggerUpdate();
-                            }
-                          }}
-                          className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
-                        >
-                          To Back
-                        </button>
-                      </div>
-                    </div>
+                        {/* Enhanced Layer Controls */}
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-2">Layer Position</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button 
+                              onClick={() => {
+                                if (selectedObject && canvas) {
+                                  canvas.bringObjectForward(selectedObject);
+                                  canvas.renderAll();
+                                  triggerUpdate();
+                                }
+                              }}
+                              className="flex items-center justify-center space-x-1 px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              <MoveUp size={12} />
+                              <span>Forward</span>
+                            </button>
+                            <button 
+                              onClick={() => {
+                                if (selectedObject && canvas) {
+                                  canvas.sendObjectBackwards(selectedObject);
+                                  canvas.renderAll();
+                                  triggerUpdate();
+                                }
+                              }}
+                              className="flex items-center justify-center space-x-1 px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              <MoveDown size={12} />
+                              <span>Backward</span>
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <button 
+                              onClick={() => {
+                                if (selectedObject && canvas) {
+                                  canvas.bringObjectToFront(selectedObject);
+                                  canvas.renderAll();
+                                  triggerUpdate();
+                                }
+                              }}
+                              className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              To Front
+                            </button>
+                            <button 
+                              onClick={() => {
+                                if (selectedObject && canvas) {
+                                  canvas.sendObjectToBack(selectedObject);
+                                  canvas.renderAll();
+                                  triggerUpdate();
+                                }
+                              }}
+                              className="px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              To Back
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
 
                     {/* Lock/Unlock */}
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-2">Object State</label>
-                      <div className="space-y-2">
-                        <label className="flex items-center space-x-2">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedObject.lockMovementX && selectedObject.lockMovementY}
-                            onChange={(e) => {
-                              selectedObject.set('lockMovementX', e.target.checked);
-                              selectedObject.set('lockMovementY', e.target.checked);
-                              canvas?.renderAll();
-                              triggerUpdate();
-                            }}
-                            className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" 
-                          />
-                          <span className="text-sm text-gray-700">Lock Movement</span>
-                        </label>
-                        <label className="flex items-center space-x-2">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedObject.lockScalingX && selectedObject.lockScalingY}
-                            onChange={(e) => {
-                              selectedObject.set('lockScalingX', e.target.checked);
-                              selectedObject.set('lockScalingY', e.target.checked);
-                              canvas?.renderAll();
-                              triggerUpdate();
-                            }}
-                            className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" 
-                          />
-                          <span className="text-sm text-gray-700">Lock Scaling</span>
-                        </label>
-                        <label className="flex items-center space-x-2">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedObject.lockRotation}
-                            onChange={(e) => {
-                              selectedObject.set('lockRotation', e.target.checked);
-                              canvas?.renderAll();
-                              triggerUpdate();
-                            }}
-                            className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" 
-                          />
-                          <span className="text-sm text-gray-700">Lock Rotation</span>
-                        </label>
+                    {editorMode === 'dev' && (
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-2">Object State</label>
+                        <div className="space-y-2">
+                          <label className="flex items-center space-x-2">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedObject.lockMovementX && selectedObject.lockMovementY}
+                              onChange={(e) => {
+                                updateObjectLockState({
+                                  lockMovementX: e.target.checked,
+                                  lockMovementY: e.target.checked,
+                                });
+                              }}
+                              className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" 
+                            />
+                            <span className="text-sm text-gray-700">Lock Movement</span>
+                          </label>
+                          <label className="flex items-center space-x-2">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedObject.lockScalingX && selectedObject.lockScalingY}
+                              onChange={(e) => {
+                                updateObjectLockState({
+                                  lockScalingX: e.target.checked,
+                                  lockScalingY: e.target.checked,
+                                });
+                              }}
+                              className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" 
+                            />
+                            <span className="text-sm text-gray-700">Lock Scaling</span>
+                          </label>
+                          <label className="flex items-center space-x-2">
+                            <input 
+                              type="checkbox" 
+                              checked={selectedObject.lockRotation}
+                              onChange={(e) => {
+                                updateObjectLockState({
+                                  lockRotation: e.target.checked,
+                                });
+                              }}
+                              className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500" 
+                            />
+                            <span className="text-sm text-gray-700">Lock Rotation</span>
+                          </label>
+                          <label className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(selectedObject.hideObjectActions)}
+                              onChange={(e) => {
+                                updateObjectLockState({
+                                  hideObjectActions: e.target.checked,
+                                });
+                              }}
+                              className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                            />
+                            <span className="text-sm text-gray-700">Object Actions</span>
+                          </label>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -806,110 +861,114 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-3">Canvas</h4>
                   <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Number of Canvases</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="20"
-                        value={localCanvasCount}
-                        onChange={(e) => setLocalCanvasCount(Number(e.target.value))}
-                        onBlur={applyCanvasCount}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            applyCanvasCount();
-                          }
-                        }}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">New Canvas Name (optional)</label>
-                      <input
-                        type="text"
-                        value={newCanvasName}
-                        onChange={(e) => setNewCanvasName(e.target.value)}
-                        placeholder="e.g. Cover, Page, Artboard"
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                      />
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <div className="flex-1">
-                        <label className="block text-xs text-gray-500 mb-1">Width</label>
-                        <input
-                          type="number"
-                          aria-label="Width"
-                          value={canvasWidth}
-                          onChange={(e) => setCanvasWidth(Number(e.target.value))}
-                          onBlur={updateCanvasSize}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <label className="block text-xs text-gray-500 mb-1">Height</label>
-                        <input
-                          type="number"
-                          aria-label="Height"
-                          value={canvasHeight}
-                          onChange={(e) => setCanvasHeight(Number(e.target.value))}
-                          onBlur={updateCanvasSize}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                        />
-                      </div>
-                    </div>
-                    <button
-                      onClick={updateCanvasSize}
-                      className="w-full mt-2 px-3 py-2 bg-cyan-500 text-white text-sm font-medium rounded hover:bg-cyan-600"
-                    >
-                      Update Size
-                    </button>
-                    
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Format</label>
-                      <select 
-                        value={canvasFormat || (canvasWidth >= canvasHeight ? 'landscape' : 'portrait')}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                        onChange={(e) => {
-                          const value = e.target.value as 'portrait' | 'landscape';
-
-                          if (onCanvasFormatChange) {
-                            onCanvasFormatChange(value);
-                            return;
-                          }
-
-                          if (value === 'portrait' && canvasWidth > canvasHeight) {
-                            const newWidth = canvasHeight;
-                            const newHeight = canvasWidth;
-                            setCanvasWidth(newWidth);
-                            setCanvasHeight(newHeight);
-                            updateCanvasDimensions?.(newWidth, newHeight);
-                            setTimeout(() => {
-                              if (canvas) {
-                                canvas.renderAll();
+                    {editorMode === 'dev' && (
+                      <>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Number of Canvases</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={localCanvasCount}
+                            onChange={(e) => setLocalCanvasCount(Number(e.target.value))}
+                            onBlur={applyCanvasCount}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                applyCanvasCount();
                               }
-                            }, 50);
-                          }
+                            }}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                          />
+                        </div>
 
-                          if (value === 'landscape' && canvasHeight > canvasWidth) {
-                            const newWidth = canvasHeight;
-                            const newHeight = canvasWidth;
-                            setCanvasWidth(newWidth);
-                            setCanvasHeight(newHeight);
-                            updateCanvasDimensions?.(newWidth, newHeight);
-                            setTimeout(() => {
-                              if (canvas) {
-                                canvas.renderAll();
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">New Canvas Name (optional)</label>
+                          <input
+                            type="text"
+                            value={newCanvasName}
+                            onChange={(e) => setNewCanvasName(e.target.value)}
+                            placeholder="e.g. Cover, Page, Artboard"
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                          />
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-500 mb-1">Width</label>
+                            <input
+                              type="number"
+                              aria-label="Width"
+                              value={canvasWidth}
+                              onChange={(e) => setCanvasWidth(Number(e.target.value))}
+                              onBlur={updateCanvasSize}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-500 mb-1">Height</label>
+                            <input
+                              type="number"
+                              aria-label="Height"
+                              value={canvasHeight}
+                              onChange={(e) => setCanvasHeight(Number(e.target.value))}
+                              onBlur={updateCanvasSize}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={updateCanvasSize}
+                          className="w-full mt-2 px-3 py-2 bg-cyan-500 text-white text-sm font-medium rounded hover:bg-cyan-600"
+                        >
+                          Update Size
+                        </button>
+
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Format</label>
+                          <select
+                            value={canvasFormat || (canvasWidth >= canvasHeight ? 'landscape' : 'portrait')}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                            onChange={(e) => {
+                              const value = e.target.value as 'portrait' | 'landscape';
+
+                              if (onCanvasFormatChange) {
+                                onCanvasFormatChange(value);
+                                return;
                               }
-                            }, 50);
-                          }
-                        }}
-                      >
-                        <option value="portrait">Portrait</option>
-                        <option value="landscape">Landscape</option>
-                      </select>
-                    </div>
+
+                              if (value === 'portrait' && canvasWidth > canvasHeight) {
+                                const newWidth = canvasHeight;
+                                const newHeight = canvasWidth;
+                                setCanvasWidth(newWidth);
+                                setCanvasHeight(newHeight);
+                                updateCanvasDimensions?.(newWidth, newHeight);
+                                setTimeout(() => {
+                                  if (canvas) {
+                                    canvas.renderAll();
+                                  }
+                                }, 50);
+                              }
+
+                              if (value === 'landscape' && canvasHeight > canvasWidth) {
+                                const newWidth = canvasHeight;
+                                const newHeight = canvasWidth;
+                                setCanvasWidth(newWidth);
+                                setCanvasHeight(newHeight);
+                                updateCanvasDimensions?.(newWidth, newHeight);
+                                setTimeout(() => {
+                                  if (canvas) {
+                                    canvas.renderAll();
+                                  }
+                                }, 50);
+                              }
+                            }}
+                          >
+                            <option value="portrait">Portrait</option>
+                            <option value="landscape">Landscape</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1816,7 +1875,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                 )}
                 
                 {/* Alignment Guides Settings */}
-                {alignmentGuides && (
+                {editorMode === 'dev' && alignmentGuides && (
                   <AlignmentGuidesSettings
                     config={alignmentGuides.config}
                     onUpdate={alignmentGuides.updateConfig}
@@ -1827,80 +1886,80 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
             ) : (
               <div className="space-y-6">
                 <h4 className="text-sm font-medium text-gray-700">Canvas Properties</h4>
-                
-                {/* Canvas Size */}
-                <div>
-                  <h5 className="text-sm font-medium text-gray-600 mb-3">Canvas Size</h5>
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <div className="flex-1">
-                        <label className="block text-xs text-gray-500 mb-1">Width</label>
-                        <input
-                          type="number"
-                          value={canvasWidth}
-                          onChange={(e) => setCanvasWidth(Number(e.target.value))}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                        />
+
+                {editorMode === 'dev' && (
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-600 mb-3">Canvas Size</h5>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <div className="flex-1">
+                          <label className="block text-xs text-gray-500 mb-1">Width</label>
+                          <input
+                            type="number"
+                            value={canvasWidth}
+                            onChange={(e) => setCanvasWidth(Number(e.target.value))}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-xs text-gray-500 mb-1">Height</label>
+                          <input
+                            type="number"
+                            value={canvasHeight}
+                            onChange={(e) => setCanvasHeight(Number(e.target.value))}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                          />
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <label className="block text-xs text-gray-500 mb-1">Height</label>
-                        <input
-                          type="number"
-                          value={canvasHeight}
-                          onChange={(e) => setCanvasHeight(Number(e.target.value))}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                        />
-                      </div>
-                    </div>
-                    
-                    <button
-                      onClick={updateCanvasSize}
-                      className="w-full px-3 py-2 text-sm bg-cyan-600 text-white rounded hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                    >
-                      Update Size
-                    </button>
-                    
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Format</label>
-                      <select 
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                        onChange={(e) => {
-                          if (e.target.value === 'portrait') {
-                            // Set portrait orientation: taller than wide
-                            const newWidth = Math.min(canvasWidth, canvasHeight);
-                            const newHeight = Math.max(canvasWidth, canvasHeight);
-                            setCanvasWidth(newWidth);
-                            setCanvasHeight(newHeight);
-                            updateCanvasDimensions?.(newWidth, newHeight);
-                            // Force canvas to re-render all objects
-                            setTimeout(() => {
-                              if (canvas) {
-                                canvas.renderAll();
-                              }
-                            }, 50);
-                          } else if (e.target.value === 'landscape') {
-                            // Set landscape orientation: wider than tall
-                            const newWidth = Math.max(canvasWidth, canvasHeight);
-                            const newHeight = Math.min(canvasWidth, canvasHeight);
-                            setCanvasWidth(newWidth);
-                            setCanvasHeight(newHeight);
-                            updateCanvasDimensions?.(newWidth, newHeight);
-                            // Force canvas to re-render all objects
-                            setTimeout(() => {
-                              if (canvas) {
-                                canvas.renderAll();
-                              }
-                            }, 50);
-                          }
-                        }}
-                        defaultValue="landscape"
+
+                      <button
+                        onClick={updateCanvasSize}
+                        className="w-full px-3 py-2 text-sm bg-cyan-600 text-white rounded hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                       >
-                        <option value="portrait">Portrait</option>
-                        <option value="landscape">Landscape</option>
-                      </select>
+                        Update Size
+                      </button>
+
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Format</label>
+                        <select
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                          onChange={(e) => {
+                            if (e.target.value === 'portrait') {
+                              const newWidth = Math.min(canvasWidth, canvasHeight);
+                              const newHeight = Math.max(canvasWidth, canvasHeight);
+                              setCanvasWidth(newWidth);
+                              setCanvasHeight(newHeight);
+                              updateCanvasDimensions?.(newWidth, newHeight);
+                              // Force canvas to re-render all objects
+                              setTimeout(() => {
+                                if (canvas) {
+                                  canvas.renderAll();
+                                }
+                              }, 50);
+                            } else if (e.target.value === 'landscape') {
+                              // Set landscape orientation: wider than tall
+                              const newWidth = Math.max(canvasWidth, canvasHeight);
+                              const newHeight = Math.min(canvasWidth, canvasHeight);
+                              setCanvasWidth(newWidth);
+                              setCanvasHeight(newHeight);
+                              updateCanvasDimensions?.(newWidth, newHeight);
+                              // Force canvas to re-render all objects
+                              setTimeout(() => {
+                                if (canvas) {
+                                  canvas.renderAll();
+                                }
+                              }, 50);
+                            }
+                          }}
+                          defaultValue="landscape"
+                        >
+                          <option value="portrait">Portrait</option>
+                          <option value="landscape">Landscape</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Background Styling */}
                 <div>

@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { FabricImage } from 'fabric';
+import { FabricImage, Canvas as FabricCanvas } from 'fabric';
+import jsPDF from 'jspdf';
 import { AdvancedQRCodeGenerator } from './utils/advancedQRGenerator';
 import './App.css';
 
 type CanvasFormat = 'portrait' | 'landscape';
+type EditorMode = 'dev' | 'prod';
 
 interface CanvasDocument {
   id: string;
@@ -12,6 +14,18 @@ interface CanvasDocument {
   height: number;
   format: CanvasFormat;
   data: string | null;
+  lockStates?: ObjectLockState[];
+}
+
+interface ObjectLockState {
+  lockMovementX: boolean;
+  lockMovementY: boolean;
+  lockScalingX: boolean;
+  lockScalingY: boolean;
+  lockRotation: boolean;
+  hideObjectActions: boolean;
+  selectable: boolean;
+  evented: boolean;
 }
 
 interface EmbeddedCanvasPayload {
@@ -21,6 +35,7 @@ interface EmbeddedCanvasPayload {
   height?: number;
   format?: CanvasFormat;
   data?: string | Record<string, unknown> | null;
+  lockStates?: ObjectLockState[];
 }
 
 interface EmbeddedProjectPayload {
@@ -46,6 +61,28 @@ const EMBED_COMMANDS = {
   ERROR: 'fabric-editor:error',
 } as const;
 
+const LOCK_SERIALIZATION_PROPS = [
+  'lockMovementX',
+  'lockMovementY',
+  'lockScalingX',
+  'lockScalingY',
+  'lockRotation',
+  'hideObjectActions',
+  'selectable',
+  'evented',
+];
+
+const getDefaultLockState = (): ObjectLockState => ({
+  lockMovementX: false,
+  lockMovementY: false,
+  lockScalingX: false,
+  lockScalingY: false,
+  lockRotation: false,
+  hideObjectActions: false,
+  selectable: true,
+  evented: true,
+});
+
 // Components
 import Header from './components/Header';
 import LeftSidebar from './components/LeftSidebar';
@@ -63,6 +100,7 @@ import { useCanvasKeyboardShortcuts } from './hooks/useCanvasKeyboardShortcuts';
 // Utils
 import { CanvasExporter, CanvasAligner, CanvasGroupManager } from './utils/canvasUtils';
 import { CANVAS_DEFAULTS } from './utils/constants';
+import { downloadDataURL, downloadText } from './utils/helpers';
 
 // Types
 import type { CanvasDimensions } from './types/canvas';
@@ -140,6 +178,17 @@ function App() {
     }
   ]);
   const [activeCanvasId, setActiveCanvasId] = useState<string>('canvas-1');
+  const canvasDocumentsRef = useRef<CanvasDocument[]>([
+    {
+      id: 'canvas-1',
+      name: 'Front',
+      width: CANVAS_DEFAULTS.WIDTH,
+      height: CANVAS_DEFAULTS.HEIGHT,
+      format: 'landscape',
+      data: null,
+    }
+  ]);
+  const [editorMode, setEditorMode] = useState<EditorMode>('dev');
   const [selectedTool, setSelectedTool] = useState<string>('select');
   const [canvasSwitchingEnabled, setCanvasSwitchingEnabled] = useState<boolean>(false);
   const [isQRCodeDialogOpen, setIsQRCodeDialogOpen] = useState<boolean>(false);
@@ -173,25 +222,83 @@ function App() {
 
   const serializeCurrentCanvas = useCallback(() => {
     if (!canvasState.canvas) return null;
-    return JSON.stringify(canvasState.canvas.toJSON());
+    return JSON.stringify(canvasState.canvas.toJSON(LOCK_SERIALIZATION_PROPS));
   }, [canvasState.canvas]);
+
+  const collectCurrentLockStates = useCallback((): ObjectLockState[] => {
+    if (!canvasState.canvas) return [];
+
+    return canvasState.canvas.getObjects().map((obj: any) => ({
+      lockMovementX: Boolean(obj.lockMovementX),
+      lockMovementY: Boolean(obj.lockMovementY),
+      lockScalingX: Boolean(obj.lockScalingX),
+      lockScalingY: Boolean(obj.lockScalingY),
+      lockRotation: Boolean(obj.lockRotation),
+      hideObjectActions: Boolean(obj.hideObjectActions),
+      selectable: obj.selectable !== false,
+      evented: obj.evented !== false,
+    }));
+  }, [canvasState.canvas]);
+
+  const applyLockStatesToCurrentCanvas = useCallback((lockStates?: ObjectLockState[]) => {
+    if (!canvasState.canvas || !lockStates?.length) return;
+
+    const objects = canvasState.canvas.getObjects();
+    objects.forEach((obj: any, index: number) => {
+      const state = lockStates[index] || getDefaultLockState();
+      obj.set({
+        lockMovementX: state.lockMovementX,
+        lockMovementY: state.lockMovementY,
+        lockScalingX: state.lockScalingX,
+        lockScalingY: state.lockScalingY,
+        lockRotation: state.lockRotation,
+        hideObjectActions: state.hideObjectActions,
+        selectable: state.selectable,
+        evented: state.evented,
+      });
+      if (typeof obj.setCoords === 'function') {
+        obj.setCoords();
+      }
+    });
+  }, [canvasState.canvas]);
+
+  const setCanvasDocumentsSynced = useCallback((
+    nextOrUpdater: CanvasDocument[] | ((prev: CanvasDocument[]) => CanvasDocument[])
+  ) => {
+    const nextDocuments = typeof nextOrUpdater === 'function'
+      ? (nextOrUpdater as (prev: CanvasDocument[]) => CanvasDocument[])(canvasDocumentsRef.current)
+      : nextOrUpdater;
+
+    canvasDocumentsRef.current = nextDocuments;
+    setCanvasDocuments(nextDocuments);
+    return nextDocuments;
+  }, []);
+
+  useEffect(() => {
+    canvasDocumentsRef.current = canvasDocuments;
+  }, [canvasDocuments]);
 
   const persistActiveCanvas = useCallback((nextDimensions?: CanvasDimensions, nextFormat?: CanvasFormat) => {
     const serializedData = serializeCurrentCanvas();
     if (!serializedData) return;
 
-    setCanvasDocuments(prev => prev.map(doc => {
-      if (doc.id !== activeCanvasId) return doc;
+    setCanvasDocumentsSynced(prev => {
+      const next = prev.map(doc => {
+        if (doc.id !== activeCanvasId) return doc;
 
-      return {
-        ...doc,
-        width: nextDimensions?.width ?? canvasDimensions.width,
-        height: nextDimensions?.height ?? canvasDimensions.height,
-        format: nextFormat ?? canvasFormat,
-        data: serializedData,
-      };
-    }));
-  }, [activeCanvasId, canvasDimensions.height, canvasDimensions.width, canvasFormat, serializeCurrentCanvas]);
+        return {
+          ...doc,
+          width: nextDimensions?.width ?? canvasDimensions.width,
+          height: nextDimensions?.height ?? canvasDimensions.height,
+          format: nextFormat ?? canvasFormat,
+          data: serializedData,
+          lockStates: collectCurrentLockStates(),
+        };
+      });
+
+      return next;
+    });
+  }, [activeCanvasId, canvasDimensions.height, canvasDimensions.width, canvasFormat, collectCurrentLockStates, serializeCurrentCanvas, setCanvasDocumentsSynced]);
 
   const normalizeCanvasPayload = useCallback((payload: EmbeddedCanvasPayload, index: number): CanvasDocument => {
     const width = payload.width && payload.width > 0 ? payload.width : CANVAS_DEFAULTS.WIDTH;
@@ -203,6 +310,12 @@ function App() {
       data = payload.data;
     } else if (payload.data && typeof payload.data === 'object') {
       data = JSON.stringify(payload.data);
+    } else {
+      // Support direct Fabric canvas JSON uploads where objects are at root level.
+      const rawCanvas = payload as unknown as Record<string, unknown>;
+      if (Array.isArray(rawCanvas.objects)) {
+        data = JSON.stringify(rawCanvas);
+      }
     }
 
     return {
@@ -212,6 +325,7 @@ function App() {
       height,
       format,
       data,
+      lockStates: Array.isArray(payload.lockStates) ? payload.lockStates : undefined,
     };
   }, []);
 
@@ -225,10 +339,26 @@ function App() {
     }
 
     if (Array.isArray(input)) {
+      const arrayInput = input as unknown[];
+
+      // If an array of raw Fabric canvas JSON objects is uploaded, map them as canvases.
+      if (arrayInput.every(item => item && typeof item === 'object' && Array.isArray((item as Record<string, unknown>).objects))) {
+        return {
+          canvases: arrayInput.map(item => ({ data: item as Record<string, unknown> })),
+        };
+      }
+
       return { canvases: input as EmbeddedCanvasPayload[] };
     }
 
     if (input && typeof input === 'object') {
+      const asRawCanvas = input as Record<string, unknown>;
+      if (Array.isArray(asRawCanvas.objects)) {
+        return {
+          canvases: [{ data: asRawCanvas }],
+        };
+      }
+
       const asProject = input as EmbeddedProjectPayload;
       if (Array.isArray(asProject.canvases)) {
         return asProject;
@@ -280,6 +410,7 @@ function App() {
     canvas.discardActiveObject();
     if (target.data) {
       await canvas.loadFromJSON(target.data);
+      applyLockStatesToCurrentCanvas(target.lockStates);
     } else {
       canvas.clear();
       canvas.backgroundColor = CANVAS_DEFAULTS.BACKGROUND_COLOR;
@@ -288,7 +419,7 @@ function App() {
     canvas.renderAll();
     setCanvasState(prev => ({ ...prev, selectedObject: null }));
     updateCanvasObjects();
-  }, [canvasState.canvas, setCanvasState, updateCanvasObjects]);
+  }, [applyLockStatesToCurrentCanvas, canvasState.canvas, setCanvasState, updateCanvasObjects]);
 
   const applyExternalProject = useCallback(async (input: unknown) => {
     const normalized = normalizeProjectPayload(input);
@@ -305,15 +436,16 @@ function App() {
     const desiredActiveId = loadedDocuments.find(doc => doc.id === normalized.activeCanvasId)?.id
       || loadedDocuments[0].id;
 
-    setCanvasDocuments(loadedDocuments);
+    setCanvasDocumentsSynced(loadedDocuments);
     setActiveCanvasId(desiredActiveId);
 
     const activeDocument = loadedDocuments.find(doc => doc.id === desiredActiveId) || loadedDocuments[0];
     await loadCanvasDocument(activeDocument);
-  }, [loadCanvasDocument, normalizeCanvasPayload, normalizeProjectPayload]);
+  }, [loadCanvasDocument, normalizeCanvasPayload, normalizeProjectPayload, setCanvasDocumentsSynced]);
 
   // Canvas dimension management
   const updateCanvasDimensions = (width: number, height: number) => {
+    if (editorMode === 'prod') return;
     if (!canvasState.canvas) return;
 
     const nextDimensions = { width, height };
@@ -341,7 +473,7 @@ function App() {
     const boundedCount = Math.max(1, Math.min(20, count));
     const requestedName = (newCanvasName || '').trim();
 
-    setCanvasDocuments(prev => {
+    setCanvasDocumentsSynced(prev => {
       if (boundedCount === prev.length) return prev;
 
       if (boundedCount < prev.length) {
@@ -366,15 +498,17 @@ function App() {
           height: canvasDimensions.height,
           format: canvasFormat,
           data: null,
+          lockStates: [],
         });
 
         customNameIndex += 1;
       }
       return [...prev, ...additions];
     });
-  }, [activeCanvasId, canvasDimensions.height, canvasDimensions.width, canvasFormat]);
+  }, [activeCanvasId, canvasDimensions.height, canvasDimensions.width, canvasFormat, setCanvasDocumentsSynced]);
 
   const handleCanvasFormatChange = useCallback((format: CanvasFormat) => {
+    if (editorMode === 'prod') return;
     if (format === canvasFormat) return;
 
     let nextWidth = canvasDimensions.width;
@@ -393,18 +527,37 @@ function App() {
     setCanvasFormat(format);
     updateCanvasDimensions(nextWidth, nextHeight);
     persistActiveCanvas({ width: nextWidth, height: nextHeight }, format);
-  }, [canvasDimensions.height, canvasDimensions.width, canvasFormat, persistActiveCanvas]);
+  }, [canvasDimensions.height, canvasDimensions.width, canvasFormat, editorMode, persistActiveCanvas]);
 
   const handleSwitchCanvas = useCallback(async (canvasId: string) => {
     if (canvasId === activeCanvasId) return;
 
-    persistActiveCanvas();
-    const target = canvasDocuments.find(doc => doc.id === canvasId);
+    const serializedData = serializeCurrentCanvas();
+    let nextDocuments = canvasDocumentsRef.current;
+
+    if (serializedData) {
+      nextDocuments = canvasDocumentsRef.current.map(doc => {
+        if (doc.id !== activeCanvasId) return doc;
+
+        return {
+          ...doc,
+          width: canvasDimensions.width,
+          height: canvasDimensions.height,
+          format: canvasFormat,
+          data: serializedData,
+          lockStates: collectCurrentLockStates(),
+        };
+      });
+
+      setCanvasDocumentsSynced(nextDocuments);
+    }
+
+    const target = nextDocuments.find(doc => doc.id === canvasId);
     if (!target) return;
 
     await loadCanvasDocument(target);
     setActiveCanvasId(canvasId);
-  }, [activeCanvasId, canvasDocuments, loadCanvasDocument, persistActiveCanvas]);
+  }, [activeCanvasId, canvasDimensions.height, canvasDimensions.width, canvasFormat, collectCurrentLockStates, loadCanvasDocument, serializeCurrentCanvas, setCanvasDocumentsSynced]);
 
   useEffect(() => {
     if (!canvasState.canvas) return;
@@ -582,8 +735,157 @@ function App() {
     }
   };
 
+  const getExportDocuments = useCallback(() => {
+    const serializedCurrent = serializeCurrentCanvas();
+
+    return canvasDocuments.map(doc => {
+      if (doc.id !== activeCanvasId) return doc;
+
+      return {
+        ...doc,
+        width: canvasDimensions.width,
+        height: canvasDimensions.height,
+        format: canvasFormat,
+        data: serializedCurrent ?? doc.data,
+        lockStates: collectCurrentLockStates(),
+      };
+    });
+  }, [activeCanvasId, canvasDimensions.height, canvasDimensions.width, canvasDocuments, canvasFormat, collectCurrentLockStates, serializeCurrentCanvas]);
+
+  const sanitizeFilePart = (value: string) => {
+    const safe = value.trim().replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    return safe || 'canvas';
+  };
+
+  const renderDocumentToCanvas = useCallback(async (doc: CanvasDocument) => {
+    const tempElement = document.createElement('canvas');
+    tempElement.width = doc.width;
+    tempElement.height = doc.height;
+
+    const tempCanvas = new FabricCanvas(tempElement, {
+      width: doc.width,
+      height: doc.height,
+      enableRetinaScaling: false,
+      backgroundColor: CANVAS_DEFAULTS.BACKGROUND_COLOR,
+    });
+
+    if (doc.data) {
+      await tempCanvas.loadFromJSON(doc.data);
+    } else {
+      tempCanvas.clear();
+      tempCanvas.backgroundColor = CANVAS_DEFAULTS.BACKGROUND_COLOR;
+    }
+
+    tempCanvas.renderAll();
+    return tempCanvas;
+  }, []);
+
+  const exportAsMultiCanvasPDF = useCallback(async (documents: CanvasDocument[]) => {
+    if (!documents.length) return;
+
+    const first = documents[0];
+    const firstOrientation = first.width >= first.height ? 'landscape' : 'portrait';
+    const pdf = new jsPDF({
+      orientation: firstOrientation,
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    for (let index = 0; index < documents.length; index += 1) {
+      const doc = documents[index];
+      const tempCanvas = await renderDocumentToCanvas(doc);
+
+      try {
+        if (index > 0) {
+          const orientation = doc.width >= doc.height ? 'landscape' : 'portrait';
+          (pdf as any).addPage('a4', orientation);
+        }
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const imageData = tempCanvas.toDataURL({
+          format: 'png',
+          quality: 1,
+          multiplier: 2,
+        });
+
+        const canvasRatio = doc.width / doc.height;
+        const pageRatio = pageWidth / pageHeight;
+
+        let imgWidth: number;
+        let imgHeight: number;
+        let x: number;
+        let y: number;
+
+        if (canvasRatio > pageRatio) {
+          imgWidth = pageWidth - 20;
+          imgHeight = imgWidth / canvasRatio;
+          x = 10;
+          y = (pageHeight - imgHeight) / 2;
+        } else {
+          imgHeight = pageHeight - 20;
+          imgWidth = imgHeight * canvasRatio;
+          x = (pageWidth - imgWidth) / 2;
+          y = 10;
+        }
+
+        pdf.addImage(imageData, 'PNG', x, y, imgWidth, imgHeight);
+      } finally {
+        tempCanvas.dispose();
+      }
+    }
+
+    pdf.save(`canvas-project-${Date.now()}.pdf`);
+  }, [renderDocumentToCanvas]);
+
   // Export function
-  const handleExport = (format: string) => {
+  const handleExport = async (format: string) => {
+    const exportDocuments = getExportDocuments();
+
+    if (format === 'json') {
+      const projectSnapshot = {
+        version: 1,
+        activeCanvasId,
+        canvases: exportDocuments,
+        exportedAt: new Date().toISOString(),
+      };
+      const fileName = `canvas-project-${Date.now()}.json`;
+      downloadText(JSON.stringify(projectSnapshot, null, 2), fileName, 'application/json');
+      return;
+    }
+
+    if (format === 'pdf') {
+      await exportAsMultiCanvasPDF(exportDocuments);
+      return;
+    }
+
+    if (format === 'png' || format === 'jpeg' || format === 'svg') {
+      for (const doc of exportDocuments) {
+        const tempCanvas = await renderDocumentToCanvas(doc);
+        const baseName = `${sanitizeFilePart(doc.name)}-${Date.now()}`;
+
+        try {
+          if (format === 'svg') {
+            const svgString = tempCanvas.toSVG();
+            downloadText(svgString, `${baseName}.svg`, 'image/svg+xml');
+            continue;
+          }
+
+          const mimeFormat = format === 'jpeg' ? 'jpeg' : 'png';
+          const extension = format === 'jpeg' ? 'jpg' : 'png';
+          const dataURL = tempCanvas.toDataURL({
+            format: mimeFormat,
+            quality: format === 'jpeg' ? 0.95 : 1,
+            multiplier: 2,
+          });
+          downloadDataURL(dataURL, `${baseName}.${extension}`);
+        } finally {
+          tempCanvas.dispose();
+        }
+      }
+      return;
+    }
+
     const exporter = getCanvasExporter();
     if (exporter) {
       exporter.export(format as any);
@@ -613,6 +915,10 @@ function App() {
     }
   };
 
+  const handleImportJSON = useCallback(async (payload: unknown) => {
+    await applyExternalProject(payload);
+  }, [applyExternalProject]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <Header 
@@ -641,6 +947,9 @@ function App() {
         onAddOctagonShape={addOctagonShape}
         onAddQRCode={handleOpenQRCodeDialog}
         onExport={handleExport}
+        onImportJSON={handleImportJSON}
+        editorMode={editorMode}
+        onEditorModeChange={setEditorMode}
         onUndo={undo}
         onRedo={redo}
         canUndo={canUndo}
@@ -665,6 +974,7 @@ function App() {
             canvasRef={canvasRef}
             canvas={canvasState.canvas}
             zoom={canvasState.zoom}
+            editorMode={editorMode}
             canvasDimensions={canvasDimensions}
             onZoomChange={(zoom: number) => setCanvasState(prev => ({ ...prev, zoom }))}
             onCanvasDimensionsChange={updateCanvasDimensionsFromCanvas}
@@ -696,7 +1006,9 @@ function App() {
           onCanvasCountChange={handleCanvasCountChange}
           canvasFormat={canvasFormat}
           onCanvasFormatChange={handleCanvasFormatChange}
+          editorMode={editorMode}
           updateQRCodeColors={updateQRCodeColors}
+          onLockStateChange={() => persistActiveCanvas()}
           onObjectUpdate={updateCanvasObjects}
           alignmentGuides={alignmentGuides}
         />
