@@ -121,6 +121,19 @@ npm run dev
 - `npm run lint:fix` - Auto-fix linting issues
 - `npm run clean` - Clean build artifacts
 
+### Deployment Base Path
+- Default production base is `/` (recommended for Vercel and most root-domain deployments).
+- If you deploy under a subpath (for example GitHub Pages), set `VITE_BASE_PATH` at build time.
+
+Examples:
+```bash
+# Root deployment (Vercel)
+npm run build
+
+# Subpath deployment
+VITE_BASE_PATH=/fabricjs-design-tool/ npm run build
+```
+
 ### 🚀 Automated Deployment
 This project uses GitHub Actions for automated deployment:
 
