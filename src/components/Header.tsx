@@ -5,6 +5,7 @@ import {
   Shapes,
   ChevronDown,
   Download,
+  Save,
   Upload,
   Undo,
   Redo,
@@ -45,10 +46,12 @@ interface HeaderProps {
   onAddTrapezoid: () => void;
   onAddOctagonShape: () => void;
   onAddQRCode?: () => void;
+  onSave?: () => void;
   onExport: (format: 'pdf' | 'png' | 'svg' | 'json' | 'jpeg') => void;
   onImportJSON?: (payload: unknown) => Promise<void> | void;
   editorMode: 'dev' | 'prod';
   onEditorModeChange: (mode: 'dev' | 'prod') => void;
+  showModeToggle?: boolean;
   onTestCanvas?: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -108,10 +111,12 @@ const Header: React.FC<HeaderProps> = ({
   onAddTrapezoid,
   onAddOctagonShape,
   onAddQRCode,
+  onSave,
   onExport,
   onImportJSON,
   editorMode,
   onEditorModeChange,
+  showModeToggle = true,
   onTestCanvas,
   onUndo,
   onRedo,
@@ -355,17 +360,19 @@ const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          <button
-            onClick={() => onEditorModeChange(editorMode === 'dev' ? 'prod' : 'dev')}
-            className={`px-3 py-1.5 text-sm font-medium rounded-md border ${
-              editorMode === 'dev'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
-            }`}
-            title="Toggle editor mode"
-          >
-            {editorMode === 'dev' ? 'Dev Mode' : 'Prod Mode'}
-          </button>
+          {showModeToggle && (
+            <button
+              onClick={() => onEditorModeChange(editorMode === 'dev' ? 'prod' : 'dev')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md border ${
+                editorMode === 'dev'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                  : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+              }`}
+              title="Toggle editor mode"
+            >
+              {editorMode === 'dev' ? 'Dev Mode' : 'Prod Mode'}
+            </button>
+          )}
 
           {onImportJSON && (
             <button
@@ -374,6 +381,16 @@ const Header: React.FC<HeaderProps> = ({
             >
               <Upload size={16} />
               <span>Upload JSON</span>
+            </button>
+          )}
+
+          {onSave && (
+            <button
+              onClick={onSave}
+              className="flex items-center space-x-2 px-4 py-2 bg-emerald-500 text-white text-sm font-medium rounded-md hover:bg-emerald-600"
+            >
+              <Save size={16} />
+              <span>Save</span>
             </button>
           )}
 

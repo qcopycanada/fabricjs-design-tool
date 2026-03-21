@@ -8,6 +8,7 @@ export {
   Shapes,
   ChevronDown,
   Download,
+  Save,
   Undo,
   Redo,
   QrCode,

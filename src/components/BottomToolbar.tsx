@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface BottomToolbarProps {
   zoom: number;
@@ -10,6 +10,8 @@ interface BottomToolbarProps {
   canvases?: Array<{ id: string; name: string }>;
   activeCanvasId?: string;
   onSwitchCanvas?: (canvasId: string) => void;
+  onRenameCanvas?: (canvasId: string, name: string) => void;
+  editorMode?: 'dev' | 'prod';
   onShowKeyboardShortcuts?: () => void;
 }
 
@@ -23,8 +25,43 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
   canvases = [],
   activeCanvasId,
   onSwitchCanvas,
+  onRenameCanvas,
+  editorMode = 'dev',
   onShowKeyboardShortcuts
 }) => {
+  const [editingCanvasId, setEditingCanvasId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+
+  useEffect(() => {
+    if (!editingCanvasId) return;
+    const target = canvases.find(canvas => canvas.id === editingCanvasId);
+    if (!target) {
+      setEditingCanvasId(null);
+      setEditingName('');
+    }
+  }, [canvases, editingCanvasId]);
+
+  const startEditingCanvasName = (canvasId: string, currentName: string) => {
+    if (editorMode !== 'dev') return;
+    setEditingCanvasId(canvasId);
+    setEditingName(currentName);
+  };
+
+  const commitCanvasRename = () => {
+    if (!editingCanvasId) return;
+    const nextName = editingName.trim();
+    if (nextName) {
+      onRenameCanvas?.(editingCanvasId, nextName);
+    }
+    setEditingCanvasId(null);
+    setEditingName('');
+  };
+
+  const cancelCanvasRename = () => {
+    setEditingCanvasId(null);
+    setEditingName('');
+  };
+
   const getLayerDisplayText = () => {
     switch (currentLayer) {
       case 'front': return 'Front Canvas';
@@ -93,18 +130,38 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
             <span className="text-xs text-gray-500">Canvases</span>
             <div className="flex items-center gap-1 overflow-x-auto max-w-[380px] pb-1">
               {canvases.map((canvas) => (
-                <button
-                  key={canvas.id}
-                  onClick={() => onSwitchCanvas?.(canvas.id)}
-                  className={`px-2.5 py-1 text-xs rounded border transition-colors whitespace-nowrap ${
-                    activeCanvasId === canvas.id
-                      ? 'bg-cyan-600 text-white border-cyan-600'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                  title={`Switch to ${canvas.name}`}
-                >
-                  {canvas.name}
-                </button>
+                <div key={canvas.id}>
+                  {editorMode === 'dev' && editingCanvasId === canvas.id ? (
+                    <input
+                      autoFocus
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onBlur={commitCanvasRename}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          commitCanvasRename();
+                        }
+                        if (e.key === 'Escape') {
+                          cancelCanvasRename();
+                        }
+                      }}
+                      className="px-2.5 py-1 text-xs rounded border border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 min-w-[90px]"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => onSwitchCanvas?.(canvas.id)}
+                      onDoubleClick={() => startEditingCanvasName(canvas.id, canvas.name)}
+                      className={`px-2.5 py-1 text-xs rounded border transition-colors whitespace-nowrap ${
+                        activeCanvasId === canvas.id
+                          ? 'bg-cyan-600 text-white border-cyan-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                      title={editorMode === 'dev' ? `Switch to ${canvas.name} (double-click to rename)` : `Switch to ${canvas.name}`}
+                    >
+                      {canvas.name}
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </div>
