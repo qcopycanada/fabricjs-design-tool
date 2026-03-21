@@ -231,11 +231,11 @@ const Header: React.FC<HeaderProps> = ({
     <header className="bg-white border-b border-gray-200 h-14">
       <div className="flex items-center justify-between h-full px-4">
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
+          {/* <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">⚡</span>
             </div>
-          </div>
+          </div> */}
 
           <div className="flex items-center space-x-1">
             <button
@@ -344,8 +344,6 @@ const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center space-x-3">
-          <button className="px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md">Templates</button>
-
           <input
             ref={importFileInputRef}
             type="file"
