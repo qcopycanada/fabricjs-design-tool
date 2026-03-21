@@ -134,6 +134,16 @@ npm run build
 VITE_BASE_PATH=/fabricjs-design-tool/ npm run build
 ```
 
+### Vercel Deployment Notes
+- `vercel.json` is configured for static Vite deployment with output directory `dist`.
+- Ensure `VITE_BASE_PATH` is not set for root-domain hosting (for example `https://editor.qcopy.ca`).
+- If you previously deployed with a different base path or old asset hashes, redeploy with cache cleared.
+
+Quick recovery checklist for asset 404s:
+1. Redeploy with **Clear build cache** enabled in Vercel.
+2. Purge custom-domain CDN cache (if Cloudflare/proxy is in front of Vercel).
+3. Hard refresh browser (`Ctrl+Shift+R`) after deployment.
+
 ### 🚀 Automated Deployment
 This project uses GitHub Actions for automated deployment:
 
