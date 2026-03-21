@@ -1,6 +1,17 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { Canvas, FabricObject, Group, ActiveSelection } from 'fabric';
 
+const LOCK_SERIALIZATION_PROPS = [
+  'lockMovementX',
+  'lockMovementY',
+  'lockScalingX',
+  'lockScalingY',
+  'lockRotation',
+  'hideObjectActions',
+  'selectable',
+  'evented',
+];
+
 export interface KeyboardShortcut {
   key: string;
   ctrlKey?: boolean;
@@ -71,7 +82,7 @@ export const useCanvasKeyboardShortcuts = (
     }
 
     try {
-      const serializedObjects = activeObjects.map(obj => obj.toObject());
+      const serializedObjects = activeObjects.map(obj => obj.toObject(LOCK_SERIALIZATION_PROPS));
       const clipboardData = JSON.stringify(serializedObjects);
       
       if (navigator.clipboard && window.isSecureContext) {
@@ -82,7 +93,7 @@ export const useCanvasKeyboardShortcuts = (
       }
     } catch {
       // Fallback to internal clipboard
-      const serializedObjects = activeObjects.map(obj => obj.toObject());
+      const serializedObjects = activeObjects.map(obj => obj.toObject(LOCK_SERIALIZATION_PROPS));
       clipboardDataRef.current = JSON.stringify(serializedObjects);
     }
   }, []);
@@ -116,7 +127,7 @@ export const useCanvasKeyboardShortcuts = (
       canvas.discardActiveObject();
       
       // Use canvas.loadFromJSON to load all objects at once
-      const currentObjects = canvas.getObjects().map(obj => obj.toObject());
+      const currentObjects = canvas.getObjects().map(obj => obj.toObject(LOCK_SERIALIZATION_PROPS));
       const offsetObjects = objects.map(obj => ({
         ...obj,
         left: (obj.left || 0) + 20,
