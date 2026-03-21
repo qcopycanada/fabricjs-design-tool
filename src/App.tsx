@@ -55,8 +55,12 @@ const EMBED_COMMANDS = {
   LOAD_TEMPLATE_COPY: 'fabric-editor:load-template-copy',
   EXPORT_PROJECT: 'fabric-editor:export-project',
   GET_PROJECT: 'fabric-editor:get-project',
+  SAVE_PDF: 'fabric-editor:save-pdf',
+  REQUEST_PDF: 'fabric-editor:request-pdf',
   PROJECT_LOADED: 'fabric-editor:project-loaded',
   PROJECT_EXPORTED: 'fabric-editor:project-exported',
+  PDF_SAVED: 'fabric-editor:pdf-saved',
+  PDF_READY: 'fabric-editor:pdf-ready',
   PROJECT_UPDATED: 'fabric-editor:project-updated',
   ERROR: 'fabric-editor:error',
 } as const;
@@ -188,11 +192,31 @@ function App() {
       data: null,
     }
   ]);
-  const [editorMode, setEditorMode] = useState<EditorMode>('dev');
+  const [editorMode, setEditorMode] = useState<EditorMode>('prod');
+  const [showModeToggle, setShowModeToggle] = useState(true);
   const [selectedTool, setSelectedTool] = useState<string>('select');
   const [canvasSwitchingEnabled, setCanvasSwitchingEnabled] = useState<boolean>(false);
   const [isQRCodeDialogOpen, setIsQRCodeDialogOpen] = useState<boolean>(false);
   const [isKeyboardShortcutsModalOpen, setIsKeyboardShortcutsModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const envHideToggle = import.meta.env.VITE_HIDE_MODE_TOGGLE === 'true';
+
+    const currentHost = window.location.hostname.toLowerCase();
+    const isQcopyHost = currentHost === 'qcopy.ca' || currentHost.endsWith('.qcopy.ca');
+
+    let isEmbeddedInQcopyHost = false;
+    if (document.referrer) {
+      try {
+        const refHost = new URL(document.referrer).hostname.toLowerCase();
+        isEmbeddedInQcopyHost = refHost === 'qcopy.ca' || refHost.endsWith('.qcopy.ca');
+      } catch {
+        isEmbeddedInQcopyHost = false;
+      }
+    }
+
+    setShowModeToggle(!(envHideToggle || isQcopyHost || isEmbeddedInQcopyHost));
+  }, []);
 
   // Keyboard shortcuts
   const keyboardShortcuts = useCanvasKeyboardShortcuts(canvasState.canvas, {
@@ -507,6 +531,19 @@ function App() {
     });
   }, [activeCanvasId, canvasDimensions.height, canvasDimensions.width, canvasFormat, setCanvasDocumentsSynced]);
 
+  const handleCanvasNameChange = useCallback((canvasId: string, name: string) => {
+    if (editorMode !== 'dev') return;
+
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    setCanvasDocumentsSynced(prev => prev.map(doc => (
+      doc.id === canvasId
+        ? { ...doc, name: trimmedName }
+        : doc
+    )));
+  }, [editorMode, setCanvasDocumentsSynced]);
+
   const handleCanvasFormatChange = useCallback((format: CanvasFormat) => {
     if (editorMode === 'prod') return;
     if (format === canvasFormat) return;
@@ -780,7 +817,7 @@ function App() {
     return tempCanvas;
   }, []);
 
-  const exportAsMultiCanvasPDF = useCallback(async (documents: CanvasDocument[]) => {
+  const buildMultiCanvasPDF = useCallback(async (documents: CanvasDocument[]) => {
     if (!documents.length) return;
 
     const first = documents[0];
@@ -835,8 +872,39 @@ function App() {
       }
     }
 
-    pdf.save(`canvas-project-${Date.now()}.pdf`);
+    return pdf;
   }, [renderDocumentToCanvas]);
+
+  const exportAsMultiCanvasPDF = useCallback(async (documents: CanvasDocument[]) => {
+    const pdf = await buildMultiCanvasPDF(documents);
+    if (!pdf) return;
+    pdf.save(`canvas-project-${Date.now()}.pdf`);
+  }, [buildMultiCanvasPDF]);
+
+  const buildPdfReturnPayload = useCallback(async () => {
+    const documents = getExportDocuments();
+    const pdf = await buildMultiCanvasPDF(documents);
+
+    if (!pdf) {
+      throw new Error('No canvases available to export as PDF.');
+    }
+
+    const pdfArrayBuffer = pdf.output('arraybuffer') as ArrayBuffer;
+    const byteArray = new Uint8Array(pdfArrayBuffer);
+    let binary = '';
+
+    for (let index = 0; index < byteArray.length; index += 1) {
+      binary += String.fromCharCode(byteArray[index]);
+    }
+
+    return {
+      mimeType: 'application/pdf' as const,
+      fileName: `canvas-project-${Date.now()}.pdf`,
+      pdfBase64: btoa(binary),
+      pdfArrayBuffer,
+      projectSnapshot: buildProjectSnapshot(),
+    };
+  }, [buildMultiCanvasPDF, buildProjectSnapshot, getExportDocuments]);
 
   // Export function
   const handleExport = async (format: string) => {
@@ -892,6 +960,63 @@ function App() {
     }
   };
 
+  const handleSaveForParent = useCallback(async () => {
+    try {
+      const payload = await buildPdfReturnPayload();
+      window.parent?.postMessage({
+        type: EMBED_COMMANDS.PDF_SAVED,
+        payload,
+      }, '*');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate PDF payload.';
+      window.parent?.postMessage({
+        type: EMBED_COMMANDS.ERROR,
+        payload: { message: errorMessage },
+      }, '*');
+    }
+  }, [buildPdfReturnPayload]);
+
+  useEffect(() => {
+    const postHostMessage = (type: string, payload: unknown, requestId?: string) => {
+      window.parent?.postMessage({ type, payload, requestId }, '*');
+    };
+
+    const onPdfRequestMessage = (event: MessageEvent) => {
+      const message = event.data as EmbeddedMessage;
+      if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
+        return;
+      }
+
+      if (message.type !== EMBED_COMMANDS.SAVE_PDF && message.type !== EMBED_COMMANDS.REQUEST_PDF) {
+        return;
+      }
+
+      buildPdfReturnPayload()
+        .then((payload) => {
+          const responseType = message.type === EMBED_COMMANDS.REQUEST_PDF
+            ? EMBED_COMMANDS.PDF_READY
+            : EMBED_COMMANDS.PDF_SAVED;
+          postHostMessage(responseType, payload, message.requestId);
+        })
+        .catch((error: unknown) => {
+          const errorMessage = error instanceof Error ? error.message : 'Failed to generate PDF payload.';
+          postHostMessage(EMBED_COMMANDS.ERROR, { message: errorMessage }, message.requestId);
+        });
+    };
+
+    window.addEventListener('message', onPdfRequestMessage);
+    return () => {
+      window.removeEventListener('message', onPdfRequestMessage);
+    };
+  }, [buildPdfReturnPayload]);
+
+  useEffect(() => {
+    if (!(window as any).fabricDesignToolBridge) return;
+
+    (window as any).fabricDesignToolBridge.savePdf = buildPdfReturnPayload;
+    (window as any).fabricDesignToolBridge.requestPdf = buildPdfReturnPayload;
+  }, [buildPdfReturnPayload]);
+
   // Alignment function
   const handleAlignObjects = (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
     const aligner = getCanvasAligner();
@@ -946,10 +1071,12 @@ function App() {
         onAddTrapezoid={addTrapezoid}
         onAddOctagonShape={addOctagonShape}
         onAddQRCode={handleOpenQRCodeDialog}
+        onSave={handleSaveForParent}
         onExport={handleExport}
         onImportJSON={handleImportJSON}
         editorMode={editorMode}
         onEditorModeChange={setEditorMode}
+        showModeToggle={showModeToggle}
         onUndo={undo}
         onRedo={redo}
         canUndo={canUndo}
@@ -987,11 +1114,13 @@ function App() {
             currentLayer={currentCanvasLayer}
             canvasSwitchingEnabled={canvasSwitchingEnabled}
             onToggleCanvasSwitching={handleToggleCanvasSwitching}
+            editorMode={editorMode}
             canvases={canvasDocuments.map(doc => ({ id: doc.id, name: doc.name }))}
             activeCanvasId={activeCanvasId}
             onSwitchCanvas={(canvasId: string) => {
               void handleSwitchCanvas(canvasId);
             }}
+            onRenameCanvas={handleCanvasNameChange}
             onShowKeyboardShortcuts={() => setIsKeyboardShortcutsModalOpen(true)}
           />
         </div>
