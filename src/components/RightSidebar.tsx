@@ -11,6 +11,10 @@ interface RightSidebarProps {
   updateCanvasObjects?: () => void;
   updateCanvasDimensions?: (width: number, height: number) => void;
   canvasDimensions?: { width: number; height: number };
+  canvasCount?: number;
+  onCanvasCountChange?: (count: number, newCanvasName?: string) => void;
+  canvasFormat?: 'portrait' | 'landscape';
+  onCanvasFormatChange?: (format: 'portrait' | 'landscape') => void;
   updateQRCodeColors?: (qrObject: FabricImage, foregroundColor: string, backgroundColor: string) => void;
   alignmentGuides?: {
     config: AlignmentGuidesConfig;
@@ -26,12 +30,18 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   updateCanvasObjects,
   updateCanvasDimensions,
   canvasDimensions,
+  canvasCount = 1,
+  onCanvasCountChange,
+  canvasFormat,
+  onCanvasFormatChange,
   updateQRCodeColors,
   alignmentGuides
 }) => {
   const [activeTab, setActiveTab] = useState<'settings' | 'styles'>('settings');
   const [canvasWidth, setCanvasWidth] = useState(canvasDimensions?.width || 800);
   const [canvasHeight, setCanvasHeight] = useState(canvasDimensions?.height || 600);
+  const [localCanvasCount, setLocalCanvasCount] = useState(canvasCount);
+  const [newCanvasName, setNewCanvasName] = useState('');
   const [backgroundColor, setBackgroundColor] = useState('#ffffff');
   const [backgroundGradientEnabled, setBackgroundGradientEnabled] = useState(false);
   const [backgroundGradientType, setBackgroundGradientType] = useState<'linear' | 'radial'>('linear');
@@ -118,6 +128,10 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
     }
   }, [canvas, canvasDimensions]);
 
+  useEffect(() => {
+    setLocalCanvasCount(canvasCount);
+  }, [canvasCount]);
+
   const updateObjectProperty = (property: string, value: any) => {
     if (selectedObject) {
       selectedObject.set(property, value);
@@ -135,6 +149,18 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
       canvas.setWidth(canvasWidth);
       canvas.setHeight(canvasHeight);
       canvas.renderAll();
+    }
+  };
+
+  const applyCanvasCount = () => {
+    const normalizedCount = Math.max(1, Math.min(20, Number(localCanvasCount) || 1));
+    setLocalCanvasCount(normalizedCount);
+
+    const trimmedName = newCanvasName.trim();
+    onCanvasCountChange?.(normalizedCount, trimmedName || undefined);
+
+    if (trimmedName) {
+      setNewCanvasName('');
     }
   };
 
@@ -780,6 +806,35 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-3">Canvas</h4>
                   <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Number of Canvases</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={localCanvasCount}
+                        onChange={(e) => setLocalCanvasCount(Number(e.target.value))}
+                        onBlur={applyCanvasCount}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            applyCanvasCount();
+                          }
+                        }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">New Canvas Name (optional)</label>
+                      <input
+                        type="text"
+                        value={newCanvasName}
+                        onChange={(e) => setNewCanvasName(e.target.value)}
+                        placeholder="e.g. Cover, Page, Artboard"
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                      />
+                    </div>
+
                     <div className="flex items-center space-x-2">
                       <div className="flex-1">
                         <label className="block text-xs text-gray-500 mb-1">Width</label>
@@ -814,42 +869,42 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Format</label>
                       <select 
+                        value={canvasFormat || (canvasWidth >= canvasHeight ? 'landscape' : 'portrait')}
                         className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                         onChange={(e) => {
-                          const value = e.target.value;
-                          if (value === 'portrait') {
-                            // Rotate to portrait: height > width
-                            if (canvasWidth > canvasHeight) {
-                              const newWidth = canvasHeight;
-                              const newHeight = canvasWidth;
-                              setCanvasWidth(newWidth);
-                              setCanvasHeight(newHeight);
-                              updateCanvasDimensions?.(newWidth, newHeight);
-                              // Force canvas to re-render all objects
-                              setTimeout(() => {
-                                if (canvas) {
-                                  canvas.renderAll();
-                                }
-                              }, 50);
-                            }
-                          } else if (value === 'landscape') {
-                            // Rotate to landscape: width > height
-                            if (canvasHeight > canvasWidth) {
-                              const newWidth = canvasHeight;
-                              const newHeight = canvasWidth;
-                              setCanvasWidth(newWidth);
-                              setCanvasHeight(newHeight);
-                              updateCanvasDimensions?.(newWidth, newHeight);
-                              // Force canvas to re-render all objects
-                              setTimeout(() => {
-                                if (canvas) {
-                                  canvas.renderAll();
-                                }
-                              }, 50);
-                            }
+                          const value = e.target.value as 'portrait' | 'landscape';
+
+                          if (onCanvasFormatChange) {
+                            onCanvasFormatChange(value);
+                            return;
+                          }
+
+                          if (value === 'portrait' && canvasWidth > canvasHeight) {
+                            const newWidth = canvasHeight;
+                            const newHeight = canvasWidth;
+                            setCanvasWidth(newWidth);
+                            setCanvasHeight(newHeight);
+                            updateCanvasDimensions?.(newWidth, newHeight);
+                            setTimeout(() => {
+                              if (canvas) {
+                                canvas.renderAll();
+                              }
+                            }, 50);
+                          }
+
+                          if (value === 'landscape' && canvasHeight > canvasWidth) {
+                            const newWidth = canvasHeight;
+                            const newHeight = canvasWidth;
+                            setCanvasWidth(newWidth);
+                            setCanvasHeight(newHeight);
+                            updateCanvasDimensions?.(newWidth, newHeight);
+                            setTimeout(() => {
+                              if (canvas) {
+                                canvas.renderAll();
+                              }
+                            }, 50);
                           }
                         }}
-                        defaultValue="landscape"
                       >
                         <option value="portrait">Portrait</option>
                         <option value="landscape">Landscape</option>

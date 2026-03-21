@@ -7,6 +7,9 @@ interface BottomToolbarProps {
   currentLayer?: 'front' | 'back';
   canvasSwitchingEnabled?: boolean;
   onToggleCanvasSwitching?: (enabled: boolean) => void;
+  canvases?: Array<{ id: string; name: string }>;
+  activeCanvasId?: string;
+  onSwitchCanvas?: (canvasId: string) => void;
   onShowKeyboardShortcuts?: () => void;
 }
 
@@ -17,6 +20,9 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
   currentLayer = 'front',
   canvasSwitchingEnabled = false,
   onToggleCanvasSwitching,
+  canvases = [],
+  activeCanvasId,
+  onSwitchCanvas,
   onShowKeyboardShortcuts
 }) => {
   const getLayerDisplayText = () => {
@@ -34,6 +40,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
       default: return 'bg-blue-600 hover:bg-blue-700';
     }
   };
+
   return (
     <div className="h-12 bg-white border-t border-gray-200 flex items-center justify-between px-4">
       <div className="flex items-center space-x-4">
@@ -56,11 +63,9 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center space-x-4">
-        {/* Canvas Layer Switching Controls */}
+      <div className="flex items-center space-x-4 min-w-0">
         {onToggleCanvasLayer && onToggleCanvasSwitching && (
           <div className="flex items-center space-x-3">
-            {/* Checkbox to enable canvas switching */}
             <label className="flex items-center space-x-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -70,8 +75,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
               />
               <span className="text-xs text-gray-600">Enable Layer Switch</span>
             </label>
-            
-            {/* Canvas Layer Toggle Button - only show when enabled */}
+
             {canvasSwitchingEnabled && (
               <button
                 onClick={onToggleCanvasLayer}
@@ -81,6 +85,28 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
                 📋 {getLayerDisplayText()}
               </button>
             )}
+          </div>
+        )}
+
+        {canvases.length > 0 && (
+          <div className="flex items-center space-x-2 min-w-0">
+            <span className="text-xs text-gray-500">Canvases</span>
+            <div className="flex items-center gap-1 overflow-x-auto max-w-[380px] pb-1">
+              {canvases.map((canvas) => (
+                <button
+                  key={canvas.id}
+                  onClick={() => onSwitchCanvas?.(canvas.id)}
+                  className={`px-2.5 py-1 text-xs rounded border transition-colors whitespace-nowrap ${
+                    activeCanvasId === canvas.id
+                      ? 'bg-cyan-600 text-white border-cyan-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                  title={`Switch to ${canvas.name}`}
+                >
+                  {canvas.name}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
