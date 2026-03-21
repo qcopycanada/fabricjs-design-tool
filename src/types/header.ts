@@ -30,6 +30,9 @@ export interface HeaderActions {
   
   // Export functionality
   onExport: (format: 'pdf' | 'png' | 'svg' | 'json' | 'jpeg') => void;
+  onImportJSON?: (payload: unknown) => Promise<void> | void;
+  editorMode: 'dev' | 'prod';
+  onEditorModeChange: (mode: 'dev' | 'prod') => void;
   
   // History actions
   onUndo: () => void;

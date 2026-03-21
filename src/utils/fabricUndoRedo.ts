@@ -1,5 +1,16 @@
 import { Canvas } from 'fabric';
 
+const LOCK_SERIALIZATION_PROPS = [
+  'lockMovementX',
+  'lockMovementY',
+  'lockScalingX',
+  'lockScalingY',
+  'lockRotation',
+  'hideObjectActions',
+  'selectable',
+  'evented',
+];
+
 export interface CanvasState {
   canvasData: string;
   timestamp: number;
@@ -84,7 +95,7 @@ export class FabricUndoRedo {
     }
 
     try {
-      const canvasData = JSON.stringify(this.canvas.toJSON());
+      const canvasData = JSON.stringify(this.canvas.toJSON(LOCK_SERIALIZATION_PROPS));
       const state: CanvasState = {
         canvasData,
         timestamp: Date.now()

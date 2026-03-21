@@ -3,6 +3,17 @@ import jsPDF from 'jspdf';
 import { downloadDataURL, downloadText } from './helpers';
 import type { ExportOptions } from '../types/canvas';
 
+const LOCK_SERIALIZATION_PROPS = [
+  'lockMovementX',
+  'lockMovementY',
+  'lockScalingX',
+  'lockScalingY',
+  'lockRotation',
+  'hideObjectActions',
+  'selectable',
+  'evented',
+];
+
 export class CanvasExporter {
   private canvas: Canvas;
 
@@ -57,7 +68,7 @@ export class CanvasExporter {
   }
 
   private exportJSON(fileName: string): void {
-    const jsonString = JSON.stringify(this.canvas.toJSON(), null, 2);
+    const jsonString = JSON.stringify(this.canvas.toJSON(LOCK_SERIALIZATION_PROPS), null, 2);
     downloadText(jsonString, `${fileName}.json`, 'application/json');
   }
 

@@ -5,6 +5,7 @@ interface CanvasWrapperProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   canvas?: Canvas | null;
   zoom: number;
+  editorMode?: 'dev' | 'prod';
   canvasDimensions?: { width: number; height: number };
   onZoomChange?: (zoom: number) => void;
   onCanvasDimensionsChange?: (dimensions: { width: number; height: number }) => void;
@@ -14,6 +15,7 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   canvasRef,
   canvas,
   zoom,
+  editorMode = 'dev',
   canvasDimensions = { width: 800, height: 600 },
   onZoomChange,
   onCanvasDimensionsChange
@@ -93,6 +95,9 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
       }
       
       if (isOnResizeHandle) {
+        if (editorMode === 'prod') {
+          return;
+        }
         e.preventDefault();
         setIsResizing(true);
         setResizeHandle(target.dataset.handle || '');
@@ -181,7 +186,7 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
       document.removeEventListener('wheel', handleWheel);
       document.body.style.cursor = 'default';
     };
-  }, [isPanning, isResizing, resizeHandle, lastMousePos, zoom, isSpacePressed, canvasDimensions, onZoomChange, onCanvasDimensionsChange, showZoomMenu, canvas]);
+  }, [isPanning, isResizing, resizeHandle, lastMousePos, zoom, isSpacePressed, canvasDimensions, onZoomChange, onCanvasDimensionsChange, showZoomMenu, canvas, editorMode]);
 
   // Zoom controls
   const zoomIn = () => {
@@ -271,106 +276,110 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
           />
           
           {/* Resize handles */}
-          <div className="resize-handle resize-handle-n" data-handle="n" style={{
-            position: 'absolute',
-            top: '-4px',
-            left: '50%',
-            width: '8px',
-            height: '8px',
-            marginLeft: '-4px',
-            backgroundColor: '#3b82f6',
-            border: '1px solid white',
-            borderRadius: '2px',
-            cursor: 'n-resize',
-            zIndex: 10
-          }} />
-          <div className="resize-handle resize-handle-s" data-handle="s" style={{
-            position: 'absolute',
-            bottom: '-4px',
-            left: '50%',
-            width: '8px',
-            height: '8px',
-            marginLeft: '-4px',
-            backgroundColor: '#3b82f6',
-            border: '1px solid white',
-            borderRadius: '2px',
-            cursor: 's-resize',
-            zIndex: 10
-          }} />
-          <div className="resize-handle resize-handle-w" data-handle="w" style={{
-            position: 'absolute',
-            left: '-4px',
-            top: '50%',
-            width: '8px',
-            height: '8px',
-            marginTop: '-4px',
-            backgroundColor: '#3b82f6',
-            border: '1px solid white',
-            borderRadius: '2px',
-            cursor: 'w-resize',
-            zIndex: 10
-          }} />
-          <div className="resize-handle resize-handle-e" data-handle="e" style={{
-            position: 'absolute',
-            right: '-4px',
-            top: '50%',
-            width: '8px',
-            height: '8px',
-            marginTop: '-4px',
-            backgroundColor: '#3b82f6',
-            border: '1px solid white',
-            borderRadius: '2px',
-            cursor: 'e-resize',
-            zIndex: 10
-          }} />
-          <div className="resize-handle resize-handle-nw" data-handle="nw" style={{
-            position: 'absolute',
-            top: '-4px',
-            left: '-4px',
-            width: '8px',
-            height: '8px',
-            backgroundColor: '#3b82f6',
-            border: '1px solid white',
-            borderRadius: '2px',
-            cursor: 'nw-resize',
-            zIndex: 10
-          }} />
-          <div className="resize-handle resize-handle-ne" data-handle="ne" style={{
-            position: 'absolute',
-            top: '-4px',
-            right: '-4px',
-            width: '8px',
-            height: '8px',
-            backgroundColor: '#3b82f6',
-            border: '1px solid white',
-            borderRadius: '2px',
-            cursor: 'ne-resize',
-            zIndex: 10
-          }} />
-          <div className="resize-handle resize-handle-sw" data-handle="sw" style={{
-            position: 'absolute',
-            bottom: '-4px',
-            left: '-4px',
-            width: '8px',
-            height: '8px',
-            backgroundColor: '#3b82f6',
-            border: '1px solid white',
-            borderRadius: '2px',
-            cursor: 'sw-resize',
-            zIndex: 10
-          }} />
-          <div className="resize-handle resize-handle-se" data-handle="se" style={{
-            position: 'absolute',
-            bottom: '-4px',
-            right: '-4px',
-            width: '8px',
-            height: '8px',
-            backgroundColor: '#3b82f6',
-            border: '1px solid white',
-            borderRadius: '2px',
-            cursor: 'se-resize',
-            zIndex: 10
-          }} />
+          {editorMode === 'dev' && (
+            <>
+              <div className="resize-handle resize-handle-n" data-handle="n" style={{
+                position: 'absolute',
+                top: '-4px',
+                left: '50%',
+                width: '8px',
+                height: '8px',
+                marginLeft: '-4px',
+                backgroundColor: '#3b82f6',
+                border: '1px solid white',
+                borderRadius: '2px',
+                cursor: 'n-resize',
+                zIndex: 10
+              }} />
+              <div className="resize-handle resize-handle-s" data-handle="s" style={{
+                position: 'absolute',
+                bottom: '-4px',
+                left: '50%',
+                width: '8px',
+                height: '8px',
+                marginLeft: '-4px',
+                backgroundColor: '#3b82f6',
+                border: '1px solid white',
+                borderRadius: '2px',
+                cursor: 's-resize',
+                zIndex: 10
+              }} />
+              <div className="resize-handle resize-handle-w" data-handle="w" style={{
+                position: 'absolute',
+                left: '-4px',
+                top: '50%',
+                width: '8px',
+                height: '8px',
+                marginTop: '-4px',
+                backgroundColor: '#3b82f6',
+                border: '1px solid white',
+                borderRadius: '2px',
+                cursor: 'w-resize',
+                zIndex: 10
+              }} />
+              <div className="resize-handle resize-handle-e" data-handle="e" style={{
+                position: 'absolute',
+                right: '-4px',
+                top: '50%',
+                width: '8px',
+                height: '8px',
+                marginTop: '-4px',
+                backgroundColor: '#3b82f6',
+                border: '1px solid white',
+                borderRadius: '2px',
+                cursor: 'e-resize',
+                zIndex: 10
+              }} />
+              <div className="resize-handle resize-handle-nw" data-handle="nw" style={{
+                position: 'absolute',
+                top: '-4px',
+                left: '-4px',
+                width: '8px',
+                height: '8px',
+                backgroundColor: '#3b82f6',
+                border: '1px solid white',
+                borderRadius: '2px',
+                cursor: 'nw-resize',
+                zIndex: 10
+              }} />
+              <div className="resize-handle resize-handle-ne" data-handle="ne" style={{
+                position: 'absolute',
+                top: '-4px',
+                right: '-4px',
+                width: '8px',
+                height: '8px',
+                backgroundColor: '#3b82f6',
+                border: '1px solid white',
+                borderRadius: '2px',
+                cursor: 'ne-resize',
+                zIndex: 10
+              }} />
+              <div className="resize-handle resize-handle-sw" data-handle="sw" style={{
+                position: 'absolute',
+                bottom: '-4px',
+                left: '-4px',
+                width: '8px',
+                height: '8px',
+                backgroundColor: '#3b82f6',
+                border: '1px solid white',
+                borderRadius: '2px',
+                cursor: 'sw-resize',
+                zIndex: 10
+              }} />
+              <div className="resize-handle resize-handle-se" data-handle="se" style={{
+                position: 'absolute',
+                bottom: '-4px',
+                right: '-4px',
+                width: '8px',
+                height: '8px',
+                backgroundColor: '#3b82f6',
+                border: '1px solid white',
+                borderRadius: '2px',
+                cursor: 'se-resize',
+                zIndex: 10
+              }} />
+            </>
+          )}
         </div>
       </div>
 
