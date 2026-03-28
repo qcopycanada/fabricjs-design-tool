@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { FabricImage, Canvas as FabricCanvas } from 'fabric';
 import jsPDF from 'jspdf';
 import { AdvancedQRCodeGenerator } from './utils/advancedQRGenerator';
@@ -74,6 +74,8 @@ const LOCK_SERIALIZATION_PROPS = [
   'hideObjectActions',
   'selectable',
   'evented',
+  '__layerId',
+  '__layerName',
 ];
 
 const PX_PER_INCH = 300;
@@ -135,6 +137,7 @@ function App() {
     toggleObjectVisibility,
     deleteObject,
     reorderObjects,
+    renameObject,
     toggleCanvasLayer,
     updateCanvasObjects,
     updateCanvasAndSaveHistory,
@@ -204,6 +207,14 @@ function App() {
   const [canvasThumbnails, setCanvasThumbnails] = useState<Record<string, string>>({});
   const [editingFloatingCanvasId, setEditingFloatingCanvasId] = useState<string | null>(null);
   const [editingFloatingCanvasName, setEditingFloatingCanvasName] = useState('');
+
+  const selectedLayerObjectId = useMemo(() => {
+    if (!canvasState.selectedObject) return null;
+    const selectedLayer = canvasObjects.find(
+      (item) => item.object === canvasState.selectedObject,
+    );
+    return selectedLayer?.id ?? null;
+  }, [canvasObjects, canvasState.selectedObject]);
 
   useEffect(() => {
     const envHideToggle = import.meta.env.VITE_HIDE_MODE_TOGGLE === 'true';
@@ -1129,10 +1140,12 @@ function App() {
       <div className="flex flex-1 overflow-hidden">
         <LeftSidebar 
           objects={canvasObjects}
+          selectedObjectId={selectedLayerObjectId}
           onSelectObject={selectObject}
           onToggleVisibility={toggleObjectVisibility}
           onDeleteObject={deleteObject}
           onReorderObjects={reorderObjects}
+          onRenameObject={renameObject}
         />
         
         <div className="flex-1 flex flex-col relative">

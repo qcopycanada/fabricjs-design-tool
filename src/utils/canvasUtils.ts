@@ -12,6 +12,8 @@ const LOCK_SERIALIZATION_PROPS = [
   'hideObjectActions',
   'selectable',
   'evented',
+  '__layerId',
+  '__layerName',
 ];
 
 const PX_PER_INCH = 300;

@@ -8,6 +8,8 @@ import { useCanvasKeyboardShortcuts } from './useCanvasKeyboardShortcuts';
 import FabricUndoRedo from '../utils/fabricUndoRedo';
 
 type CanvasLayer = 'front' | 'back';
+const LAYER_ID_PROP = '__layerId';
+const LAYER_NAME_PROP = '__layerName';
 
 // Default alignment guides configuration
 const DEFAULT_ALIGNMENT_GUIDES: AlignmentGuidesConfig = {
@@ -193,8 +195,20 @@ export const useCanvasManager = (canvasRef: React.RefObject<HTMLCanvasElement | 
     if (!canvasState.canvas) return;
     
     const objects = canvasState.canvas.getObjects().map((obj: FabricObject, index: number) => ({
-      id: generateId('object'),
-      name: formatObjectName(obj.type || 'object', index),
+      id: (() => {
+        const layerId = (obj as any)[LAYER_ID_PROP] as string | undefined;
+        if (layerId) return layerId;
+        const nextId = generateId('object');
+        (obj as any)[LAYER_ID_PROP] = nextId;
+        return nextId;
+      })(),
+      name: (() => {
+        const layerName = (obj as any)[LAYER_NAME_PROP] as string | undefined;
+        if (layerName && layerName.trim()) return layerName;
+        const fallbackName = formatObjectName(obj.type || 'object', index);
+        (obj as any)[LAYER_NAME_PROP] = fallbackName;
+        return fallbackName;
+      })(),
       type: (obj.type || 'text') as ObjectType,
       object: obj
     }));
@@ -278,14 +292,18 @@ export const useCanvasManager = (canvasRef: React.RefObject<HTMLCanvasElement | 
 
   const addObjectToCanvas = useCallback((object: FabricObject, objectType: string) => {
     if (!canvasState.canvas) return;
+    const layerId = generateId(objectType);
+    const layerName = formatObjectName(objectType, canvasObjects.length);
+    (object as any)[LAYER_ID_PROP] = layerId;
+    (object as any)[LAYER_NAME_PROP] = layerName;
     
     canvasState.canvas.add(object);
     canvasState.canvas.setActiveObject(object);
     canvasState.canvas.renderAll();
     
     const newObject = {
-      id: generateId(objectType),
-      name: formatObjectName(objectType, canvasObjects.length),
+      id: layerId,
+      name: layerName,
       type: objectType as any,
       object
     };
@@ -341,6 +359,22 @@ export const useCanvasManager = (canvasRef: React.RefObject<HTMLCanvasElement | 
 
     canvasState.canvas.moveObjectTo(dragged.object, toIndex);
     canvasState.canvas.renderAll();
+    updateCanvasObjects();
+
+    if (undoRedoManager) {
+      undoRedoManager.saveCurrentState();
+    }
+  }, [canvasState.canvas, canvasObjects, undoRedoManager, updateCanvasObjects]);
+
+  const renameObject = useCallback((objectId: string, nextName: string) => {
+    if (!canvasState.canvas) return;
+    const trimmedName = nextName.trim();
+    if (!trimmedName) return;
+
+    const target = canvasObjects.find((obj) => obj.id === objectId);
+    if (!target) return;
+
+    (target.object as any)[LAYER_NAME_PROP] = trimmedName;
     updateCanvasObjects();
 
     if (undoRedoManager) {
@@ -478,6 +512,7 @@ export const useCanvasManager = (canvasRef: React.RefObject<HTMLCanvasElement | 
     moveObjectUp,
     moveObjectDown,
     reorderObjects,
+    renameObject,
     toggleObjectVisibility,
     deleteObject,
     toggleCanvasLayer,
