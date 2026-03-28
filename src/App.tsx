@@ -76,6 +76,8 @@ const LOCK_SERIALIZATION_PROPS = [
   'evented',
 ];
 
+const PX_PER_INCH = 300;
+
 const getDefaultLockState = (): ObjectLockState => ({
   lockMovementX: false,
   lockMovementY: false,
@@ -246,7 +248,7 @@ function App() {
 
   const serializeCurrentCanvas = useCallback(() => {
     if (!canvasState.canvas) return null;
-    return JSON.stringify(canvasState.canvas.toJSON(LOCK_SERIALIZATION_PROPS));
+    return JSON.stringify((canvasState.canvas as any).toJSON(LOCK_SERIALIZATION_PROPS));
   }, [canvasState.canvas]);
 
   const collectCurrentLockStates = useCallback((): ObjectLockState[] => {
@@ -821,11 +823,10 @@ function App() {
     if (!documents.length) return;
 
     const first = documents[0];
-    const firstOrientation = first.width >= first.height ? 'landscape' : 'portrait';
     const pdf = new jsPDF({
-      orientation: firstOrientation,
-      unit: 'mm',
-      format: 'a4',
+      orientation: first.width >= first.height ? 'landscape' : 'portrait',
+      unit: 'in',
+      format: [first.width / PX_PER_INCH, first.height / PX_PER_INCH],
     });
 
     for (let index = 0; index < documents.length; index += 1) {
@@ -835,38 +836,17 @@ function App() {
       try {
         if (index > 0) {
           const orientation = doc.width >= doc.height ? 'landscape' : 'portrait';
-          (pdf as any).addPage('a4', orientation);
+          (pdf as any).addPage([doc.width / PX_PER_INCH, doc.height / PX_PER_INCH], orientation);
         }
 
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
         const imageData = tempCanvas.toDataURL({
           format: 'png',
           quality: 1,
           multiplier: 2,
         });
 
-        const canvasRatio = doc.width / doc.height;
-        const pageRatio = pageWidth / pageHeight;
-
-        let imgWidth: number;
-        let imgHeight: number;
-        let x: number;
-        let y: number;
-
-        if (canvasRatio > pageRatio) {
-          imgWidth = pageWidth - 20;
-          imgHeight = imgWidth / canvasRatio;
-          x = 10;
-          y = (pageHeight - imgHeight) / 2;
-        } else {
-          imgHeight = pageHeight - 20;
-          imgWidth = imgHeight * canvasRatio;
-          x = (pageWidth - imgWidth) / 2;
-          y = 10;
-        }
-
-        pdf.addImage(imageData, 'PNG', x, y, imgWidth, imgHeight);
+        // Render edge-to-edge with no added margins.
+        pdf.addImage(imageData, 'PNG', 0, 0, doc.width / PX_PER_INCH, doc.height / PX_PER_INCH);
       } finally {
         tempCanvas.dispose();
       }

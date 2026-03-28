@@ -14,6 +14,8 @@ const LOCK_SERIALIZATION_PROPS = [
   'evented',
 ];
 
+const PX_PER_INCH = 300;
+
 export class CanvasExporter {
   private canvas: Canvas;
 
@@ -68,7 +70,7 @@ export class CanvasExporter {
   }
 
   private exportJSON(fileName: string): void {
-    const jsonString = JSON.stringify(this.canvas.toJSON(LOCK_SERIALIZATION_PROPS), null, 2);
+    const jsonString = JSON.stringify((this.canvas as any).toJSON(LOCK_SERIALIZATION_PROPS), null, 2);
     downloadText(jsonString, `${fileName}.json`, 'application/json');
   }
 
@@ -82,33 +84,14 @@ export class CanvasExporter {
       multiplier: 2
     });
     
-    // Calculate PDF dimensions
-    const pageWidth = 210; // A4 width in mm
-    const pageHeight = 297; // A4 height in mm
-    const canvasRatio = canvasWidth / canvasHeight;
-    const pageRatio = pageWidth / pageHeight;
-    
-    let imgWidth: number, imgHeight: number, x: number, y: number;
-    
-    if (canvasRatio > pageRatio) {
-      imgWidth = pageWidth - 20;
-      imgHeight = imgWidth / canvasRatio;
-      x = 10;
-      y = (pageHeight - imgHeight) / 2;
-    } else {
-      imgHeight = pageHeight - 20;
-      imgWidth = imgHeight * canvasRatio;
-      x = (pageWidth - imgWidth) / 2;
-      y = 10;
-    }
-    
     const pdf = new jsPDF({
-      orientation: canvasRatio > 1 ? 'landscape' : 'portrait',
-      unit: 'mm',
-      format: 'a4'
+      orientation: canvasWidth >= canvasHeight ? 'landscape' : 'portrait',
+      unit: 'in',
+      format: [canvasWidth / PX_PER_INCH, canvasHeight / PX_PER_INCH]
     });
-    
-    pdf.addImage(imageData, 'PNG', x, y, imgWidth, imgHeight);
+
+    // Render edge-to-edge with no added margins.
+    pdf.addImage(imageData, 'PNG', 0, 0, canvasWidth / PX_PER_INCH, canvasHeight / PX_PER_INCH);
     pdf.save(`${fileName}.pdf`);
   }
 }

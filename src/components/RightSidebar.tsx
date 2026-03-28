@@ -4,6 +4,8 @@ import { Shadow, Gradient, Rect, filters, FabricImage } from 'fabric';
 import AlignmentGuidesSettings from './AlignmentGuidesSettings';
 import type { AlignmentGuidesConfig } from '../types/canvas';
 
+const CANVAS_DPI = 300;
+
 interface RightSidebarProps {
   selectedObject: any;
   canvas: any;
@@ -51,6 +53,9 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   const [backgroundGradientType, setBackgroundGradientType] = useState<'linear' | 'radial'>('linear');
   const [backgroundGradientStartColor, setBackgroundGradientStartColor] = useState('#3b82f6');
   const [backgroundGradientEndColor, setBackgroundGradientEndColor] = useState('#1d4ed8');
+
+  const inchesFromPixels = (pixels: number) => Number((pixels / CANVAS_DPI).toFixed(2));
+  const pixelsFromInches = (inches: number) => Math.max(1, Math.round(inches * CANVAS_DPI));
   
   // Image filter states
   const [brightness, setBrightness] = useState(0);
@@ -894,23 +899,37 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
 
                         <div className="flex items-center space-x-2">
                           <div className="flex-1">
-                            <label className="block text-xs text-gray-500 mb-1">Width</label>
+                            <label className="block text-xs text-gray-500 mb-1">Width (in)</label>
                             <input
                               type="number"
+                              min="0.01"
+                              step="0.01"
                               aria-label="Width"
-                              value={canvasWidth}
-                              onChange={(e) => setCanvasWidth(Number(e.target.value))}
+                              value={inchesFromPixels(canvasWidth)}
+                              onChange={(e) => {
+                                const parsed = Number(e.target.value);
+                                if (Number.isFinite(parsed)) {
+                                  setCanvasWidth(pixelsFromInches(parsed));
+                                }
+                              }}
                               onBlur={updateCanvasSize}
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
                             />
                           </div>
                           <div className="flex-1">
-                            <label className="block text-xs text-gray-500 mb-1">Height</label>
+                            <label className="block text-xs text-gray-500 mb-1">Height (in)</label>
                             <input
                               type="number"
+                              min="0.01"
+                              step="0.01"
                               aria-label="Height"
-                              value={canvasHeight}
-                              onChange={(e) => setCanvasHeight(Number(e.target.value))}
+                              value={inchesFromPixels(canvasHeight)}
+                              onChange={(e) => {
+                                const parsed = Number(e.target.value);
+                                if (Number.isFinite(parsed)) {
+                                  setCanvasHeight(pixelsFromInches(parsed));
+                                }
+                              }}
                               onBlur={updateCanvasSize}
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
                             />
@@ -1893,20 +1912,34 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                     <div className="space-y-3">
                       <div className="flex items-center space-x-2">
                         <div className="flex-1">
-                          <label className="block text-xs text-gray-500 mb-1">Width</label>
+                          <label className="block text-xs text-gray-500 mb-1">Width (in)</label>
                           <input
                             type="number"
-                            value={canvasWidth}
-                            onChange={(e) => setCanvasWidth(Number(e.target.value))}
+                            min="0.01"
+                            step="0.01"
+                            value={inchesFromPixels(canvasWidth)}
+                            onChange={(e) => {
+                              const parsed = Number(e.target.value);
+                              if (Number.isFinite(parsed)) {
+                                setCanvasWidth(pixelsFromInches(parsed));
+                              }
+                            }}
                             className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
                           />
                         </div>
                         <div className="flex-1">
-                          <label className="block text-xs text-gray-500 mb-1">Height</label>
+                          <label className="block text-xs text-gray-500 mb-1">Height (in)</label>
                           <input
                             type="number"
-                            value={canvasHeight}
-                            onChange={(e) => setCanvasHeight(Number(e.target.value))}
+                            min="0.01"
+                            step="0.01"
+                            value={inchesFromPixels(canvasHeight)}
+                            onChange={(e) => {
+                              const parsed = Number(e.target.value);
+                              if (Number.isFinite(parsed)) {
+                                setCanvasHeight(pixelsFromInches(parsed));
+                              }
+                            }}
                             className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
                           />
                         </div>
