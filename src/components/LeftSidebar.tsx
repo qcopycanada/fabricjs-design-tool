@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Eye,
   EyeOff,
@@ -21,14 +21,19 @@ interface LeftSidebarProps {
   onSelectObject: (objectId: string) => void;
   onToggleVisibility: (objectId: string) => void;
   onDeleteObject: (objectId: string) => void;
+  onReorderObjects?: (draggedObjectId: string, targetObjectId: string) => void;
 }
 
 const LeftSidebar: React.FC<LeftSidebarProps> = ({
   objects,
   onSelectObject,
   onToggleVisibility,
-  onDeleteObject
+  onDeleteObject,
+  onReorderObjects
 }) => {
+  const [draggedObjectId, setDraggedObjectId] = useState<string | null>(null);
+  const orderedObjects = useMemo(() => [...objects].reverse(), [objects]);
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'text':
@@ -64,11 +69,29 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <div className="flex-1 overflow-y-auto">
         <div className="px-4 pb-4">
           <div className="space-y-1">
-            {objects.map((obj) => (
+            {orderedObjects.map((obj) => (
             <div 
               key={obj.id}
               className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm group hover:bg-gray-100 cursor-pointer"
               onClick={() => onSelectObject(obj.id)}
+              draggable
+              onDragStart={(e) => {
+                setDraggedObjectId(obj.id);
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragEnd={() => {
+                setDraggedObjectId(null);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (!draggedObjectId || draggedObjectId === obj.id) return;
+                onReorderObjects?.(draggedObjectId, obj.id);
+                setDraggedObjectId(null);
+              }}
             >
               <div className="flex items-center space-x-2">
                 {getIcon(obj.type)}
