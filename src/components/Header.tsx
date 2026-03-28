@@ -52,6 +52,7 @@ interface HeaderProps {
   editorMode: 'dev' | 'prod';
   onEditorModeChange: (mode: 'dev' | 'prod') => void;
   showModeToggle?: boolean;
+  showActionButtons?: boolean;
   onTestCanvas?: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -117,6 +118,7 @@ const Header: React.FC<HeaderProps> = ({
   editorMode,
   onEditorModeChange,
   showModeToggle = true,
+  showActionButtons = true,
   onTestCanvas,
   onUndo,
   onRedo,
@@ -372,7 +374,7 @@ const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {onImportJSON && (
+          {showActionButtons && onImportJSON && (
             <button
               onClick={() => importFileInputRef.current?.click()}
               className="flex items-center space-x-2 px-4 py-2 bg-white text-cyan-600 text-sm font-medium rounded-md border border-cyan-300 hover:bg-cyan-50"
@@ -382,7 +384,7 @@ const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {onSave && (
+          {showActionButtons && onSave && (
             <button
               onClick={onSave}
               className="flex items-center space-x-2 px-4 py-2 bg-emerald-500 text-white text-sm font-medium rounded-md hover:bg-emerald-600"
@@ -392,38 +394,40 @@ const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          <div className="relative" ref={exportDropdownRef}>
-            <button
-              onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-              className="flex items-center space-x-2 px-4 py-2 bg-cyan-400 text-white text-sm font-medium rounded-md hover:bg-cyan-500"
-            >
-              <Download size={16} />
-              <span>Export</span>
-              <ChevronDown size={16} className={`transition-transform ${isExportDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
+          {showActionButtons && (
+            <div className="relative" ref={exportDropdownRef}>
+              <button
+                onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                className="flex items-center space-x-2 px-4 py-2 bg-cyan-400 text-white text-sm font-medium rounded-md hover:bg-cyan-500"
+              >
+                <Download size={16} />
+                <span>Export</span>
+                <ChevronDown size={16} className={`transition-transform ${isExportDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-            {isExportDropdownOpen && (
-              <div className="absolute top-full right-0 mt-1 w-52 bg-white border border-gray-200 rounded-md shadow-lg z-10">
-                <div className="py-1">
-                  <button onClick={() => { onExport('png'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                    <span>PNG (All Canvases)</span>
-                  </button>
-                  <button onClick={() => { onExport('jpeg'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                    <span>JPEG (All Canvases)</span>
-                  </button>
-                  <button onClick={() => { onExport('svg'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                    <span>SVG (All Canvases)</span>
-                  </button>
-                  <button onClick={() => { onExport('pdf'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                    <span>PDF (All Canvases)</span>
-                  </button>
-                  <button onClick={() => { onExport('json'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                    <span>JSON (All Canvases)</span>
-                  </button>
+              {isExportDropdownOpen && (
+                <div className="absolute top-full right-0 mt-1 w-52 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                  <div className="py-1">
+                    <button onClick={() => { onExport('png'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <span>PNG (All Canvases)</span>
+                    </button>
+                    <button onClick={() => { onExport('jpeg'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <span>JPEG (All Canvases)</span>
+                    </button>
+                    <button onClick={() => { onExport('svg'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <span>SVG (All Canvases)</span>
+                    </button>
+                    <button onClick={() => { onExport('pdf'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <span>PDF (All Canvases)</span>
+                    </button>
+                    <button onClick={() => { onExport('json'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <span>JSON (All Canvases)</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -35,6 +35,7 @@ export interface HeaderActions {
   editorMode: 'dev' | 'prod';
   onEditorModeChange: (mode: 'dev' | 'prod') => void;
   showModeToggle?: boolean;
+  showActionButtons?: boolean;
   
   // History actions
   onUndo: () => void;
