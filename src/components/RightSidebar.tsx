@@ -5,6 +5,135 @@ import AlignmentGuidesSettings from './AlignmentGuidesSettings';
 import type { AlignmentGuidesConfig } from '../types/canvas';
 
 const CANVAS_DPI = 300;
+const SVG_COLOR_REGEX = /(#[0-9a-fA-F]{3,8}|rgba?\([^\)]+\)|hsla?\([^\)]+\))/g;
+const STYLE_COLOR_DECLARATION_REGEX = /(fill|stroke|stop-color|color)\s*:\s*([^;]+)/gi;
+
+const normalizeSvgColorToken = (token: string): string => token.replace(/!important/gi, '').trim().toLowerCase();
+
+const parseSvgColorTokens = (svgText: string): string[] => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgText, 'image/svg+xml');
+  const colors = new Set<string>();
+
+  const addColor = (value?: string | null) => {
+    if (!value) return;
+    const normalized = value.replace(/!important/gi, '').trim();
+    if (!normalized || normalized.toLowerCase() === 'none') return;
+    colors.add(normalized);
+  };
+
+  doc.querySelectorAll('*').forEach((element) => {
+    addColor(element.getAttribute('fill'));
+    addColor(element.getAttribute('stroke'));
+    addColor(element.getAttribute('stop-color'));
+    addColor(element.getAttribute('color'));
+
+    const style = element.getAttribute('style');
+    if (style) {
+      let match: RegExpExecArray | null;
+      const regex = new RegExp(STYLE_COLOR_DECLARATION_REGEX.source, STYLE_COLOR_DECLARATION_REGEX.flags);
+      while ((match = regex.exec(style)) !== null) {
+        addColor(match[2]);
+      }
+    }
+  });
+
+  doc.querySelectorAll('style').forEach((styleNode) => {
+    const text = styleNode.textContent || '';
+    let match: RegExpExecArray | null;
+    const regex = new RegExp(STYLE_COLOR_DECLARATION_REGEX.source, STYLE_COLOR_DECLARATION_REGEX.flags);
+    while ((match = regex.exec(text)) !== null) {
+      addColor(match[2]);
+    }
+  });
+
+  return Array.from(colors);
+};
+
+const replaceSvgColorTokens = (
+  svgText: string,
+  colorMap: Record<string, string>,
+): string => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgText, 'image/svg+xml');
+
+  const replaceToken = (token?: string | null): string | null => {
+    if (!token) return token ?? null;
+    const mapped = colorMap[normalizeSvgColorToken(token)];
+    return mapped || token;
+  };
+
+  doc.querySelectorAll('*').forEach((element) => {
+    const fill = element.getAttribute('fill');
+    const stroke = element.getAttribute('stroke');
+    const stopColor = element.getAttribute('stop-color');
+    const objectColor = element.getAttribute('color');
+    const style = element.getAttribute('style');
+
+    const nextFill = replaceToken(fill);
+    const nextStroke = replaceToken(stroke);
+    const nextStopColor = replaceToken(stopColor);
+    const nextObjectColor = replaceToken(objectColor);
+    if (fill !== nextFill && nextFill !== null) {
+      element.setAttribute('fill', nextFill);
+    }
+    if (stroke !== nextStroke && nextStroke !== null) {
+      element.setAttribute('stroke', nextStroke);
+    }
+    if (stopColor !== nextStopColor && nextStopColor !== null) {
+      element.setAttribute('stop-color', nextStopColor);
+    }
+    if (objectColor !== nextObjectColor && nextObjectColor !== null) {
+      element.setAttribute('color', nextObjectColor);
+    }
+
+    if (style) {
+      const updatedStyle = style.replace(STYLE_COLOR_DECLARATION_REGEX, (_whole, prop, value) => {
+        const replacement = colorMap[normalizeSvgColorToken(value)];
+        return `${prop}: ${replacement || value}`;
+      });
+      if (updatedStyle !== style) {
+        element.setAttribute('style', updatedStyle);
+      }
+    }
+  });
+
+  doc.querySelectorAll('style').forEach((styleNode) => {
+    const text = styleNode.textContent || '';
+    const updatedText = text.replace(STYLE_COLOR_DECLARATION_REGEX, (_whole, prop, value) => {
+      const replacement = colorMap[normalizeSvgColorToken(value)];
+      return `${prop}: ${replacement || value}`;
+    });
+    if (updatedText !== text) {
+      styleNode.textContent = updatedText;
+    }
+  });
+
+  return new XMLSerializer().serializeToString(doc);
+};
+
+const toHexColor = (value: string): string => {
+  const normalized = value.trim();
+
+  if (/^#[0-9a-fA-F]{6}$/.test(normalized)) {
+    return normalized;
+  }
+
+  if (/^#[0-9a-fA-F]{3}$/.test(normalized)) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
+  }
+
+  const rgbMatch = normalized.match(/^rgba?\(([^\)]+)\)$/i);
+  if (rgbMatch) {
+    const [r, g, b] = rgbMatch[1].split(',').slice(0, 3).map((part) => Number(part.trim()));
+    if ([r, g, b].every((n) => Number.isFinite(n) && n >= 0 && n <= 255)) {
+      const toHex = (num: number) => num.toString(16).padStart(2, '0');
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+  }
+
+  return '#000000';
+};
 
 interface RightSidebarProps {
   selectedObject: any;
@@ -61,6 +190,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   const [brightness, setBrightness] = useState(0);
   const [contrast, setContrast] = useState(0);
   const [saturation, setSaturation] = useState(0);
+  const [svgColorMap, setSvgColorMap] = useState<Record<string, string>>({});
   
   // Background image upload ref
   const backgroundImageInputRef = useRef<HTMLInputElement>(null);
@@ -79,9 +209,49 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
       setBrightness(0);
       setContrast(0);
       setSaturation(0);
+
+      const svgSource = (selectedObject as any)?.__svgSource as string | undefined;
+      const colorTokens = ((selectedObject as any)?.__svgColors as string[] | undefined) ||
+        (svgSource ? parseSvgColorTokens(svgSource) : []);
+      const existingMap = ((selectedObject as any)?.__svgColorMap as Record<string, string> | undefined) || {};
+
+      const nextMap: Record<string, string> = {};
+      colorTokens.forEach((token) => {
+        const key = normalizeSvgColorToken(token);
+        nextMap[key] = existingMap[key] || toHexColor(token);
+      });
+      setSvgColorMap(nextMap);
     }
     triggerUpdate();
   }, [selectedObject, triggerUpdate]);
+
+  const isSvgImage = selectedObject?.type === 'image' && Boolean((selectedObject as any)?.__isSvgUpload);
+
+  const applySvgColorMap = async (nextColorMap: Record<string, string>) => {
+    if (!isSvgImage || !selectedObject) return;
+
+    const originalSvgSource = ((selectedObject as any).__svgOriginalSource || (selectedObject as any).__svgSource) as string | undefined;
+    if (!originalSvgSource) return;
+
+    const updatedSvg = replaceSvgColorTokens(originalSvgSource, nextColorMap);
+    const encodedSvg = btoa(unescape(encodeURIComponent(updatedSvg)));
+    const svgDataUrl = `data:image/svg+xml;base64,${encodedSvg}`;
+
+    try {
+      if (typeof (selectedObject as any).setSrc === 'function') {
+        await (selectedObject as any).setSrc(svgDataUrl);
+      }
+      (selectedObject as any).__svgSource = updatedSvg;
+      (selectedObject as any).__svgOriginalSource = originalSvgSource;
+      (selectedObject as any).__svgColorMap = nextColorMap;
+      (selectedObject as any).__svgColors = parseSvgColorTokens(originalSvgSource);
+
+      canvas?.renderAll();
+      triggerUpdate();
+    } catch {
+      // Keep existing behavior if recolor fails for malformed SVG content.
+    }
+  };
 
   // Set up real-time position tracking
   useEffect(() => {
@@ -1609,6 +1779,48 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                 {/* Image Object Properties */}
                 {selectedObject.type === 'image' && (
                   <div className="space-y-3">
+                    {isSvgImage && Object.keys(svgColorMap).length > 0 && (
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">SVG Colors</label>
+                        <div className="space-y-2">
+                          {Object.entries(svgColorMap).map(([token, color]) => (
+                            <div key={token} className="flex items-center space-x-2">
+                              <span
+                                className="w-4 h-4 border border-gray-300 rounded"
+                                style={{ backgroundColor: color }}
+                              />
+                              <input
+                                type="color"
+                                value={toHexColor(color)}
+                                onChange={async (e) => {
+                                  const nextMap = { ...svgColorMap, [token]: e.target.value };
+                                  setSvgColorMap(nextMap);
+                                  await applySvgColorMap(nextMap);
+                                }}
+                                className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                              />
+                              <input
+                                type="text"
+                                value={color}
+                                onChange={(e) => {
+                                  const nextMap = { ...svgColorMap, [token]: e.target.value };
+                                  setSvgColorMap(nextMap);
+                                }}
+                                onBlur={async () => {
+                                  const nextMap = { ...svgColorMap };
+                                  await applySvgColorMap(nextMap);
+                                }}
+                                className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                              />
+                              <span className="text-[10px] text-gray-400 uppercase max-w-[72px] truncate" title={token}>
+                                {token}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Filters</label>
                       <div className="space-y-2">
