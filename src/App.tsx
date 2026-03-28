@@ -1077,6 +1077,7 @@ function App() {
         editorMode={editorMode}
         onEditorModeChange={setEditorMode}
         showModeToggle={showModeToggle}
+        showActionButtons={showModeToggle}
         onUndo={undo}
         onRedo={redo}
         canUndo={canUndo}
