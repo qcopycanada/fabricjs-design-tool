@@ -134,6 +134,7 @@ function App() {
     selectObject,
     toggleObjectVisibility,
     deleteObject,
+    reorderObjects,
     toggleCanvasLayer,
     updateCanvasObjects,
     updateCanvasAndSaveHistory,
@@ -200,6 +201,9 @@ function App() {
   const [canvasSwitchingEnabled, setCanvasSwitchingEnabled] = useState<boolean>(false);
   const [isQRCodeDialogOpen, setIsQRCodeDialogOpen] = useState<boolean>(false);
   const [isKeyboardShortcutsModalOpen, setIsKeyboardShortcutsModalOpen] = useState<boolean>(false);
+  const [canvasThumbnails, setCanvasThumbnails] = useState<Record<string, string>>({});
+  const [editingFloatingCanvasId, setEditingFloatingCanvasId] = useState<string | null>(null);
+  const [editingFloatingCanvasName, setEditingFloatingCanvasName] = useState('');
 
   useEffect(() => {
     const envHideToggle = import.meta.env.VITE_HIDE_MODE_TOGGLE === 'true';
@@ -546,6 +550,27 @@ function App() {
     )));
   }, [editorMode, setCanvasDocumentsSynced]);
 
+  const startFloatingCanvasRename = useCallback((canvasId: string, currentName: string) => {
+    if (editorMode !== 'dev') return;
+    setEditingFloatingCanvasId(canvasId);
+    setEditingFloatingCanvasName(currentName);
+  }, [editorMode]);
+
+  const commitFloatingCanvasRename = useCallback(() => {
+    if (!editingFloatingCanvasId) return;
+    const trimmedName = editingFloatingCanvasName.trim();
+    if (trimmedName) {
+      handleCanvasNameChange(editingFloatingCanvasId, trimmedName);
+    }
+    setEditingFloatingCanvasId(null);
+    setEditingFloatingCanvasName('');
+  }, [editingFloatingCanvasId, editingFloatingCanvasName, handleCanvasNameChange]);
+
+  const cancelFloatingCanvasRename = useCallback(() => {
+    setEditingFloatingCanvasId(null);
+    setEditingFloatingCanvasName('');
+  }, []);
+
   const handleCanvasFormatChange = useCallback((format: CanvasFormat) => {
     if (editorMode === 'prod') return;
     if (format === canvasFormat) return;
@@ -819,6 +844,38 @@ function App() {
     return tempCanvas;
   }, []);
 
+  useEffect(() => {
+    let disposed = false;
+
+    const buildThumbnails = async () => {
+      const docs = getExportDocuments();
+      const nextThumbnails: Record<string, string> = {};
+
+      for (const doc of docs) {
+        const tempCanvas = await renderDocumentToCanvas(doc);
+        try {
+          nextThumbnails[doc.id] = tempCanvas.toDataURL({
+            format: 'png',
+            quality: 0.8,
+            multiplier: 0.25,
+          });
+        } finally {
+          tempCanvas.dispose();
+        }
+      }
+
+      if (!disposed) {
+        setCanvasThumbnails(nextThumbnails);
+      }
+    };
+
+    void buildThumbnails();
+
+    return () => {
+      disposed = true;
+    };
+  }, [getExportDocuments, renderDocumentToCanvas, canvasObjects]);
+
   const buildMultiCanvasPDF = useCallback(async (documents: CanvasDocument[]) => {
     if (!documents.length) return;
 
@@ -1075,6 +1132,7 @@ function App() {
           onSelectObject={selectObject}
           onToggleVisibility={toggleObjectVisibility}
           onDeleteObject={deleteObject}
+          onReorderObjects={reorderObjects}
         />
         
         <div className="flex-1 flex flex-col relative">
@@ -1096,6 +1154,7 @@ function App() {
             canvasSwitchingEnabled={canvasSwitchingEnabled}
             onToggleCanvasSwitching={handleToggleCanvasSwitching}
             editorMode={editorMode}
+            showCanvasTabs={false}
             canvases={canvasDocuments.map(doc => ({ id: doc.id, name: doc.name }))}
             activeCanvasId={activeCanvasId}
             onSwitchCanvas={(canvasId: string) => {
@@ -1104,6 +1163,78 @@ function App() {
             onRenameCanvas={handleCanvasNameChange}
             onShowKeyboardShortcuts={() => setIsKeyboardShortcutsModalOpen(true)}
           />
+
+          {canvasDocuments.length > 0 && (
+            <div className="absolute top-4 right-4 z-20 w-44 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-xl shadow-lg p-2">
+              <div className="px-1 pb-2 text-xs font-medium text-gray-500">Canvases</div>
+              <div className="max-h-[58vh] overflow-y-auto space-y-2">
+                {canvasDocuments.map((doc) => {
+                  const isActive = activeCanvasId === doc.id;
+                  const isEditing = editorMode === 'dev' && editingFloatingCanvasId === doc.id;
+
+                  return (
+                    <div
+                      key={doc.id}
+                      className={`w-full rounded-lg border p-1.5 transition-colors ${
+                        isActive
+                          ? 'border-cyan-500 bg-cyan-50'
+                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                      }`}
+                    >
+                      <button
+                        onClick={() => {
+                          void handleSwitchCanvas(doc.id);
+                        }}
+                        className="w-full text-left"
+                      >
+                        <div className="w-full aspect-[3/2] overflow-hidden rounded border border-gray-200 bg-gray-100 mb-1.5">
+                          {canvasThumbnails[doc.id] ? (
+                            <img
+                              src={canvasThumbnails[doc.id]}
+                              alt={`${doc.name} preview`}
+                              className="w-full h-full object-cover"
+                              draggable={false}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400">Preview</div>
+                          )}
+                        </div>
+                      </button>
+
+                      {isEditing ? (
+                        <input
+                          autoFocus
+                          value={editingFloatingCanvasName}
+                          onChange={(e) => setEditingFloatingCanvasName(e.target.value)}
+                          onBlur={commitFloatingCanvasRename}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              commitFloatingCanvasRename();
+                            }
+                            if (e.key === 'Escape') {
+                              cancelFloatingCanvasRename();
+                            }
+                          }}
+                          className="w-full px-1.5 py-1 text-xs border border-cyan-400 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                        />
+                      ) : (
+                        <div
+                          onDoubleClick={(e) => {
+                            e.preventDefault();
+                            startFloatingCanvasRename(doc.id, doc.name);
+                          }}
+                          className={`text-xs font-medium truncate ${isActive ? 'text-cyan-700' : 'text-gray-700'}`}
+                          title={editorMode === 'dev' ? `${doc.name} (double-click to rename)` : doc.name}
+                        >
+                          {doc.name}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
         
         <RightSidebar 

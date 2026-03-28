@@ -327,6 +327,27 @@ export const useCanvasManager = (canvasRef: React.RefObject<HTMLCanvasElement | 
     }
   }, [canvasState.canvas, canvasObjects]);
 
+  const reorderObjects = useCallback((draggedObjectId: string, targetObjectId: string) => {
+    if (!canvasState.canvas) return;
+
+    const dragged = canvasObjects.find(obj => obj.id === draggedObjectId);
+    const target = canvasObjects.find(obj => obj.id === targetObjectId);
+    if (!dragged || !target) return;
+
+    const stack = canvasState.canvas.getObjects();
+    const fromIndex = stack.indexOf(dragged.object);
+    const toIndex = stack.indexOf(target.object);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+
+    canvasState.canvas.moveObjectTo(dragged.object, toIndex);
+    canvasState.canvas.renderAll();
+    updateCanvasObjects();
+
+    if (undoRedoManager) {
+      undoRedoManager.saveCurrentState();
+    }
+  }, [canvasState.canvas, canvasObjects, undoRedoManager, updateCanvasObjects]);
+
   const toggleCanvasLayer = useCallback(() => {
     setCurrentCanvasLayer(prev => prev === 'front' ? 'back' : 'front');
   }, []);
@@ -456,6 +477,7 @@ export const useCanvasManager = (canvasRef: React.RefObject<HTMLCanvasElement | 
     selectObject,
     moveObjectUp,
     moveObjectDown,
+    reorderObjects,
     toggleObjectVisibility,
     deleteObject,
     toggleCanvasLayer,

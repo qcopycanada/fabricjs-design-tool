@@ -12,6 +12,7 @@ interface BottomToolbarProps {
   onSwitchCanvas?: (canvasId: string) => void;
   onRenameCanvas?: (canvasId: string, name: string) => void;
   editorMode?: 'dev' | 'prod';
+  showCanvasTabs?: boolean;
   onShowKeyboardShortcuts?: () => void;
 }
 
@@ -27,6 +28,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
   onSwitchCanvas,
   onRenameCanvas,
   editorMode = 'dev',
+  showCanvasTabs = true,
   onShowKeyboardShortcuts
 }) => {
   const [editingCanvasId, setEditingCanvasId] = useState<string | null>(null);
@@ -125,7 +127,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
           </div>
         )}
 
-        {canvases.length > 0 && (
+        {showCanvasTabs && canvases.length > 0 && (
           <div className="flex items-center space-x-2 min-w-0">
             <span className="text-xs text-gray-500">Canvases</span>
             <div className="flex items-center gap-1 overflow-x-auto max-w-[380px] pb-1">
