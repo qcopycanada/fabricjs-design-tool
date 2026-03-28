@@ -11,6 +11,46 @@ import type {
   CustomRoundedRect 
 } from '../types/canvas';
 
+const STYLE_COLOR_DECLARATION_REGEX = /(fill|stroke|stop-color|color)\s*:\s*([^;]+)/gi;
+
+const extractSvgColors = (svgText: string): string[] => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgText, 'image/svg+xml');
+  const colors = new Set<string>();
+
+  const addColor = (value?: string | null) => {
+    if (!value) return;
+    const normalized = value.replace(/!important/gi, '').trim();
+    if (!normalized || normalized.toLowerCase() === 'none') return;
+    colors.add(normalized);
+  };
+
+  doc.querySelectorAll('*').forEach((element) => {
+    addColor(element.getAttribute('fill'));
+    addColor(element.getAttribute('stroke'));
+
+    const style = element.getAttribute('style');
+    if (style) {
+      let match: RegExpExecArray | null;
+      const regex = new RegExp(STYLE_COLOR_DECLARATION_REGEX.source, STYLE_COLOR_DECLARATION_REGEX.flags);
+      while ((match = regex.exec(style)) !== null) {
+        addColor(match[2]);
+      }
+    }
+  });
+
+  doc.querySelectorAll('style').forEach((styleNode) => {
+    const text = styleNode.textContent || '';
+    let match: RegExpExecArray | null;
+    const regex = new RegExp(STYLE_COLOR_DECLARATION_REGEX.source, STYLE_COLOR_DECLARATION_REGEX.flags);
+    while ((match = regex.exec(text)) !== null) {
+      addColor(match[2]);
+    }
+  });
+
+  return Array.from(colors);
+};
+
 // Default positioning constants to reduce magic numbers
 const DEFAULT_POSITIONS = {
   SMALL_OFFSET: 100,
@@ -194,11 +234,16 @@ export class ShapeFactory {
 
   // Create image from file
   static createImageFromFile(file: File, config: Partial<ShapeConfig> = {}): Promise<FabricImage> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const imgUrl = event.target?.result as string;
-        FabricImage.fromURL(imgUrl).then((img) => {
+    return new Promise(async (resolve, reject) => {
+      const isSvgFile = file.type.includes('svg') || file.name.toLowerCase().endsWith('.svg');
+
+      try {
+        if (isSvgFile) {
+          const svgText = await file.text();
+          const encodedSvg = btoa(unescape(encodeURIComponent(svgText)));
+          const imgUrl = `data:image/svg+xml;base64,${encodedSvg}`;
+
+          const img = await FabricImage.fromURL(imgUrl);
           img.scale(SHAPE_DEFAULTS.SCALE);
           img.set({
             left: DEFAULT_POSITIONS.SMALL_OFFSET,
@@ -207,11 +252,36 @@ export class ShapeFactory {
             evented: true,
             ...config
           });
+
+          (img as any).__isSvgUpload = true;
+          (img as any).__svgSource = svgText;
+          (img as any).__svgOriginalSource = svgText;
+          (img as any).__svgColors = extractSvgColors(svgText);
+
           resolve(img);
-        }).catch(reject);
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const imgUrl = event.target?.result as string;
+          FabricImage.fromURL(imgUrl).then((img) => {
+            img.scale(SHAPE_DEFAULTS.SCALE);
+            img.set({
+              left: DEFAULT_POSITIONS.SMALL_OFFSET,
+              top: DEFAULT_POSITIONS.IMAGE_TOP,
+              selectable: true,
+              evented: true,
+              ...config
+            });
+            resolve(img);
+          }).catch(reject);
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error('Failed to read file'));
+      }
     });
   }
 }

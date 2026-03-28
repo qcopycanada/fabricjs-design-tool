@@ -14,6 +14,11 @@ const LOCK_SERIALIZATION_PROPS = [
   'evented',
   '__layerId',
   '__layerName',
+  '__isSvgUpload',
+  '__svgSource',
+  '__svgOriginalSource',
+  '__svgColors',
+  '__svgColorMap',
 ];
 
 const PX_PER_INCH = 300;
