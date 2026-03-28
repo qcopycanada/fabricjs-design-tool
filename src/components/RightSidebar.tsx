@@ -204,6 +204,10 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
 
   // Update component when selectedObject changes
   useEffect(() => {
+    if (selectedObject) {
+      setActiveTab('styles');
+    }
+
     // Reset filter states when object changes
     if (selectedObject?.type === 'image') {
       setBrightness(0);

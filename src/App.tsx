@@ -207,6 +207,7 @@ function App() {
   const [showModeToggle, setShowModeToggle] = useState(true);
   const [selectedTool, setSelectedTool] = useState<string>('select');
   const [canvasSwitchingEnabled, setCanvasSwitchingEnabled] = useState<boolean>(false);
+  const [safeAreaVisible, setSafeAreaVisible] = useState<boolean>(true);
   const [isQRCodeDialogOpen, setIsQRCodeDialogOpen] = useState<boolean>(false);
   const [isKeyboardShortcutsModalOpen, setIsKeyboardShortcutsModalOpen] = useState<boolean>(false);
   const [canvasThumbnails, setCanvasThumbnails] = useState<Record<string, string>>({});
@@ -1159,6 +1160,7 @@ function App() {
             canvas={canvasState.canvas}
             zoom={canvasState.zoom}
             editorMode={editorMode}
+            showSafeArea={safeAreaVisible}
             canvasDimensions={canvasDimensions}
             onZoomChange={(zoom: number) => setCanvasState(prev => ({ ...prev, zoom }))}
             onCanvasDimensionsChange={updateCanvasDimensionsFromCanvas}
@@ -1167,6 +1169,8 @@ function App() {
           <BottomToolbar 
             zoom={canvasState.zoom}
             onZoomChange={(zoom: number) => setCanvasState(prev => ({ ...prev, zoom }))}
+            safeAreaVisible={safeAreaVisible}
+            onToggleSafeArea={setSafeAreaVisible}
             onToggleCanvasLayer={toggleCanvasLayer}
             currentLayer={currentCanvasLayer}
             canvasSwitchingEnabled={canvasSwitchingEnabled}

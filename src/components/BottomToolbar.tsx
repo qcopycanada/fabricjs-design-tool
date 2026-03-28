@@ -3,6 +3,8 @@ import React, { useEffect, useState } from 'react';
 interface BottomToolbarProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
+  safeAreaVisible?: boolean;
+  onToggleSafeArea?: (visible: boolean) => void;
   onToggleCanvasLayer?: () => void;
   currentLayer?: 'front' | 'back';
   canvasSwitchingEnabled?: boolean;
@@ -19,6 +21,8 @@ interface BottomToolbarProps {
 const BottomToolbar: React.FC<BottomToolbarProps> = ({ 
   zoom, 
   onZoomChange, 
+  safeAreaVisible = true,
+  onToggleSafeArea,
   onToggleCanvasLayer,
   currentLayer = 'front',
   canvasSwitchingEnabled = false,
@@ -105,6 +109,18 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
       <div className="flex items-center space-x-4 min-w-0">
         {onToggleCanvasLayer && onToggleCanvasSwitching && (
           <div className="flex items-center space-x-3">
+            {onToggleSafeArea && (
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={safeAreaVisible}
+                  onChange={(e) => onToggleSafeArea(e.target.checked)}
+                  className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500 focus:ring-2"
+                />
+                <span className="text-xs text-gray-600">Safe Area</span>
+              </label>
+            )}
+
             <label className="flex items-center space-x-2 cursor-pointer">
               <input
                 type="checkbox"

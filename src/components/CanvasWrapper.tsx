@@ -6,16 +6,21 @@ interface CanvasWrapperProps {
   canvas?: Canvas | null;
   zoom: number;
   editorMode?: 'dev' | 'prod';
+  showSafeArea?: boolean;
   canvasDimensions?: { width: number; height: number };
   onZoomChange?: (zoom: number) => void;
   onCanvasDimensionsChange?: (dimensions: { width: number; height: number }) => void;
 }
+
+const CANVAS_DPI = 300;
+const SAFE_AREA_INSET_INCHES = 0.25;
 
 const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   canvasRef,
   canvas,
   zoom,
   editorMode = 'dev',
+  showSafeArea = true,
   canvasDimensions = { width: 800, height: 600 },
   onZoomChange,
   onCanvasDimensionsChange
@@ -220,6 +225,12 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
     setViewportPosition({ x: 0, y: 0 });
   };
 
+  const safeInsetPx = SAFE_AREA_INSET_INCHES * CANVAS_DPI;
+  const shouldRenderSafeArea =
+    showSafeArea &&
+    canvasDimensions.width > safeInsetPx * 2 &&
+    canvasDimensions.height > safeInsetPx * 2;
+
   return (
     <div 
       ref={containerRef}
@@ -274,6 +285,46 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
               height: '100%'
             }}
           />
+
+          {shouldRenderSafeArea && (
+            <>
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  pointerEvents: 'none',
+                  left: `${safeInsetPx}px`,
+                  top: `${safeInsetPx}px`,
+                  width: `${canvasDimensions.width - safeInsetPx * 2}px`,
+                  height: `${canvasDimensions.height - safeInsetPx * 2}px`,
+                  border: '1.5px dashed rgba(14, 116, 144, 0.75)',
+                  borderRadius: '2px',
+                  zIndex: 6,
+                }}
+              />
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  pointerEvents: 'none',
+                  left: `${safeInsetPx + 12}px`,
+                  top: `${safeInsetPx}px`,
+                  transform: 'translateY(-50%)',
+                  padding: '2px 6px',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  letterSpacing: '0.02em',
+                  color: 'rgba(14, 116, 144, 0.95)',
+                  background: 'rgba(255, 255, 255, 0.9)',
+                  border: '1px solid rgba(14, 116, 144, 0.35)',
+                  borderRadius: '9999px',
+                  zIndex: 7,
+                }}
+              >
+                Safe Area
+              </div>
+            </>
+          )}
           
           {/* Resize handles */}
           {editorMode === 'dev' && (
