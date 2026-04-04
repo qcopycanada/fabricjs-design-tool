@@ -154,6 +154,7 @@ interface RightSidebarProps {
     updateConfig: (config: Partial<AlignmentGuidesConfig>) => void;
     toggle: () => void;
   };
+  className?: string;
 }
 
 const RightSidebar: React.FC<RightSidebarProps> = ({
@@ -170,7 +171,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   onCanvasFormatChange,
   editorMode = 'dev',
   updateQRCodeColors,
-  alignmentGuides
+  alignmentGuides,
+  className = 'w-80'
 }) => {
   const [activeTab, setActiveTab] = useState<'settings' | 'styles'>('settings');
   const [canvasWidth, setCanvasWidth] = useState(canvasDimensions?.width || 800);
@@ -614,7 +616,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   );
 
   return (
-    <div className="w-80 bg-white border-l border-gray-200 h-full flex flex-col">
+    <div className={`${className} bg-white border-l border-gray-200 h-full flex flex-col`}>
       {/* Hidden file input for background image upload */}
       <input
         ref={backgroundImageInputRef}

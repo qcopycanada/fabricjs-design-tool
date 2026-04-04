@@ -3,6 +3,7 @@ import {
   Type,
   Image,
   Shapes,
+  Ellipsis,
   ChevronDown,
   Download,
   Save,
@@ -132,19 +133,25 @@ const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isShapeDialogOpen, setIsShapeDialogOpen] = useState(false);
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: PointerEvent) => {
       if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
         setIsExportDropdownOpen(false);
       }
+
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
+        setIsMobileMenuOpen(false);
+      }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('pointerdown', handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('pointerdown', handleClickOutside);
     };
   }, []);
 
@@ -230,8 +237,188 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 h-14">
-      <div className="flex items-center justify-between h-full px-4">
+    <header className="bg-white border-b border-gray-200">
+      <div className="lg:hidden px-2 py-2">
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                onToolSelect('text');
+                onAddText();
+              }}
+              aria-label="Text"
+              className={`w-10 h-10 rounded-md flex items-center justify-center ${selectedTool === 'text' ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              <Type size={18} />
+            </button>
+
+            <button
+              onClick={() => {
+                onToolSelect('image');
+                onAddImage();
+              }}
+              aria-label="Image"
+              className={`w-10 h-10 rounded-md flex items-center justify-center ${selectedTool === 'image' ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              <Image size={18} />
+            </button>
+
+            <button
+              onClick={onAddQRCode}
+              aria-label="QR Code"
+              className={`w-10 h-10 rounded-md flex items-center justify-center ${selectedTool === 'qrcode' ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
+              title="QR Code Generator"
+            >
+              <QrCode size={18} />
+            </button>
+
+            <button
+              onClick={() => setIsShapeDialogOpen(true)}
+              aria-label="Shapes"
+              className={`w-10 h-10 rounded-md flex items-center justify-center ${shapeToolKeys.includes(selectedTool) ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
+              title="Shapes"
+            >
+              <Shapes size={18} />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onUndo}
+              disabled={!canUndo}
+              aria-label="Undo"
+              title="Undo"
+              className={`w-10 h-10 rounded-md flex items-center justify-center ${canUndo ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-300 cursor-not-allowed'}`}
+            >
+              <Undo size={18} />
+            </button>
+            <button
+              onClick={onRedo}
+              disabled={!canRedo}
+              aria-label="Redo"
+              title="Redo"
+              className={`w-10 h-10 rounded-md flex items-center justify-center ${canRedo ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-300 cursor-not-allowed'}`}
+            >
+              <Redo size={18} />
+            </button>
+
+            {showActionButtons && (
+              <div className="relative" ref={exportDropdownRef}>
+                <button
+                  onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                  className="h-10 px-3 bg-cyan-400 text-white text-sm font-medium rounded-md hover:bg-cyan-500 flex items-center gap-1"
+                >
+                  <Download size={16} />
+                  <ChevronDown size={16} className={`transition-transform ${isExportDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isExportDropdownOpen && (
+                  <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-20">
+                    <div className="py-1">
+                      <button onClick={() => { onExport('png'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">PNG (All Canvases)</button>
+                      <button onClick={() => { onExport('jpeg'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">JPEG (All Canvases)</button>
+                      <button onClick={() => { onExport('svg'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">SVG (All Canvases)</button>
+                      <button onClick={() => { onExport('pdf'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">PDF (All Canvases)</button>
+                      <button onClick={() => { onExport('json'); setIsExportDropdownOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">JSON (All Canvases)</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="relative" ref={mobileMenuRef}>
+              <button
+                onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+                className="w-10 h-10 rounded-md flex items-center justify-center text-gray-600 hover:bg-gray-100"
+                aria-label="More actions"
+              >
+                <Ellipsis size={18} />
+              </button>
+
+              {isMobileMenuOpen && (
+                <div className="absolute top-full right-0 mt-1 w-56 bg-white border border-gray-200 rounded-md shadow-lg z-20 p-2 space-y-2">
+                  <div className="grid grid-cols-3 gap-1">
+                    <button onClick={() => { onAlignObjects('left'); setIsMobileMenuOpen(false); }} className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50">Left</button>
+                    <button onClick={() => { onAlignObjects('center'); setIsMobileMenuOpen(false); }} className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50">Center</button>
+                    <button onClick={() => { onAlignObjects('right'); setIsMobileMenuOpen(false); }} className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50">Right</button>
+                    <button onClick={() => { onAlignObjects('top'); setIsMobileMenuOpen(false); }} className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50">Top</button>
+                    <button onClick={() => { onAlignObjects('middle'); setIsMobileMenuOpen(false); }} className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50">Middle</button>
+                    <button onClick={() => { onAlignObjects('bottom'); setIsMobileMenuOpen(false); }} className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50">Bottom</button>
+                  </div>
+
+                  {(canGroup || canUngroup) && (
+                    <div className="grid grid-cols-2 gap-1">
+                      {canGroup && (
+                        <button onClick={() => { onGroupObjects(); setIsMobileMenuOpen(false); }} className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50">Group</button>
+                      )}
+                      {canUngroup && (
+                        <button onClick={() => { onUngroupObjects(); setIsMobileMenuOpen(false); }} className="px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50">Ungroup</button>
+                      )}
+                    </div>
+                  )}
+
+                  {showActionButtons && onImportJSON && (
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        importFileInputRef.current?.click();
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-white text-cyan-600 text-sm font-medium rounded-md border border-cyan-300 hover:bg-cyan-50"
+                    >
+                      <Upload size={16} />
+                      <span>Upload JSON</span>
+                    </button>
+                  )}
+
+                  {showActionButtons && onSave && (
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        onSave();
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-500 text-white text-sm font-medium rounded-md hover:bg-emerald-600"
+                    >
+                      <Save size={16} />
+                      <span>Save</span>
+                    </button>
+                  )}
+
+                  {onTestCanvas && (
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        onTestCanvas();
+                      }}
+                      className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md border border-red-300"
+                    >
+                      Test Canvas
+                    </button>
+                  )}
+
+                  {showModeToggle && (
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        onEditorModeChange(editorMode === 'dev' ? 'prod' : 'dev');
+                      }}
+                      className={`w-full px-3 py-2 text-sm font-medium rounded-md border ${
+                        editorMode === 'dev'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                          : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                      }`}
+                      title="Toggle editor mode"
+                    >
+                      {editorMode === 'dev' ? 'Dev Mode' : 'Prod Mode'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden lg:flex items-center justify-between h-14 px-3">
         <div className="flex items-center space-x-4">
           {/* <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
@@ -380,7 +567,7 @@ const Header: React.FC<HeaderProps> = ({
               className="flex items-center space-x-2 px-4 py-2 bg-white text-cyan-600 text-sm font-medium rounded-md border border-cyan-300 hover:bg-cyan-50"
             >
               <Upload size={16} />
-              <span>Upload JSON</span>
+              <span className="hidden sm:inline">Upload JSON</span>
             </button>
           )}
 
@@ -390,7 +577,7 @@ const Header: React.FC<HeaderProps> = ({
               className="flex items-center space-x-2 px-4 py-2 bg-emerald-500 text-white text-sm font-medium rounded-md hover:bg-emerald-600"
             >
               <Save size={16} />
-              <span>Save</span>
+              <span className="hidden sm:inline">Save</span>
             </button>
           )}
 
@@ -401,7 +588,7 @@ const Header: React.FC<HeaderProps> = ({
                 className="flex items-center space-x-2 px-4 py-2 bg-cyan-400 text-white text-sm font-medium rounded-md hover:bg-cyan-500"
               >
                 <Download size={16} />
-                <span>Export</span>
+                <span className="hidden sm:inline">Export</span>
                 <ChevronDown size={16} className={`transition-transform ${isExportDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 

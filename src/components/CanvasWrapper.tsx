@@ -7,6 +7,8 @@ interface CanvasWrapperProps {
   zoom: number;
   editorMode?: 'dev' | 'prod';
   showSafeArea?: boolean;
+  showTrimArea?: boolean;
+  fitToScreenRequest?: number;
   canvasDimensions?: { width: number; height: number };
   onZoomChange?: (zoom: number) => void;
   onCanvasDimensionsChange?: (dimensions: { width: number; height: number }) => void;
@@ -14,6 +16,14 @@ interface CanvasWrapperProps {
 
 const CANVAS_DPI = 300;
 const SAFE_AREA_INSET_INCHES = 0.25;
+const TRIM_AREA_INSET_INCHES = 0.125;
+const BASE_CONTROL_CORNER_SIZE = 10;
+const BASE_CONTROL_TOUCH_CORNER_SIZE = 24;
+const BASE_CONTROL_PADDING = 6;
+const BASE_BORDER_SCALE_FACTOR = 1.6;
+const CONTROL_ACCENT_COLOR = '#06b6d4';
+const CONTROL_ACCENT_BORDER = 'rgba(8, 145, 178, 0.95)';
+const CONTROL_SELECTION_FILL = 'rgba(6, 182, 212, 0.08)';
 
 const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   canvasRef,
@@ -21,6 +31,8 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   zoom,
   editorMode = 'dev',
   showSafeArea = true,
+  showTrimArea = true,
+  fitToScreenRequest = 0,
   canvasDimensions = { width: 800, height: 600 },
   onZoomChange,
   onCanvasDimensionsChange
@@ -35,9 +47,53 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
   const zoomMenuRef = useRef<HTMLDivElement>(null);
+  const pinchStartDistanceRef = useRef<number | null>(null);
+  const pinchStartZoomRef = useRef<number>(zoom);
+  const previousDimensionsRef = useRef(canvasDimensions);
 
   // Handle viewport panning and zooming (like Adobe Illustrator)
   useEffect(() => {
+    const getTouchPanAnchor = (touchEvent: TouchEvent) => {
+      if (touchEvent.touches.length >= 2) {
+        const first = touchEvent.touches[0];
+        const second = touchEvent.touches[1];
+        return {
+          x: (first.clientX + second.clientX) / 2,
+          y: (first.clientY + second.clientY) / 2,
+        };
+      }
+
+      const first = touchEvent.touches[0];
+      return { x: first.clientX, y: first.clientY };
+    };
+
+    const getTouchDistance = (touchEvent: TouchEvent) => {
+      if (touchEvent.touches.length < 2) return 0;
+      const first = touchEvent.touches[0];
+      const second = touchEvent.touches[1];
+      return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+    };
+
+    const shouldStartTouchPan = (touchEvent: TouchEvent, target: HTMLElement) => {
+      const isOnCanvasViewport = target.closest('.canvas-viewport');
+      const isOnZoomMenu = target.closest('.zoom-menu');
+      const isOnResizeHandle = target.classList.contains('resize-handle');
+
+      if (!isOnCanvasViewport || isOnZoomMenu || isOnResizeHandle) {
+        return false;
+      }
+
+      if (touchEvent.touches.length >= 2) {
+        return true;
+      }
+
+      if (touchEvent.touches.length === 1 && Math.abs(zoom - 1) > 0.001) {
+        return !canvas?.getActiveObject();
+      }
+
+      return false;
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check if we're currently editing text
       const activeElement = document.activeElement;
@@ -165,6 +221,65 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
       }
     };
 
+    const handleTouchStart = (e: TouchEvent) => {
+      const target = e.target as HTMLElement;
+      const isOnZoomMenu = target.closest('.zoom-menu');
+
+      if (!isOnZoomMenu && showZoomMenu) {
+        setShowZoomMenu(false);
+      }
+
+      if (!shouldStartTouchPan(e, target)) {
+        return;
+      }
+
+      e.preventDefault();
+      const anchor = getTouchPanAnchor(e);
+      setIsPanning(true);
+      setLastMousePos(anchor);
+
+      if (e.touches.length >= 2) {
+        pinchStartDistanceRef.current = getTouchDistance(e);
+        pinchStartZoomRef.current = zoom;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isPanning || e.touches.length === 0) {
+        return;
+      }
+
+      e.preventDefault();
+
+      if (e.touches.length >= 2) {
+        const distance = getTouchDistance(e);
+        const pinchStartDistance = pinchStartDistanceRef.current;
+
+        if (pinchStartDistance && distance > 0) {
+          const scaledZoom = pinchStartZoomRef.current * (distance / pinchStartDistance);
+          const clampedZoom = Math.max(0.1, Math.min(5, scaledZoom));
+          onZoomChange?.(clampedZoom);
+        }
+      }
+
+      const anchor = getTouchPanAnchor(e);
+      const deltaX = anchor.x - lastMousePos.x;
+      const deltaY = anchor.y - lastMousePos.y;
+
+      setViewportPosition(prev => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY
+      }));
+
+      setLastMousePos(anchor);
+    };
+
+    const handleTouchEnd = () => {
+      setIsPanning(false);
+      pinchStartDistanceRef.current = null;
+      pinchStartZoomRef.current = zoom;
+    };
+
     const handleWheel = (e: WheelEvent) => {
       if ((e.target as HTMLElement)?.closest('.canvas-viewport')) {
         e.preventDefault();
@@ -181,6 +296,10 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('wheel', handleWheel, { passive: false });
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
@@ -189,6 +308,10 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchcancel', handleTouchEnd);
       document.body.style.cursor = 'default';
     };
   }, [isPanning, isResizing, resizeHandle, lastMousePos, zoom, isSpacePressed, canvasDimensions, onZoomChange, onCanvasDimensionsChange, showZoomMenu, canvas, editorMode]);
@@ -204,21 +327,103 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
     onZoomChange?.(newZoom);
   };
 
-  const zoomToFit = () => {
-    if (!containerRef.current) return;
-    
+  const calculateFitZoom = (width: number, height: number) => {
+    if (!containerRef.current) return null;
+
     const containerRect = containerRef.current.getBoundingClientRect();
-    const containerWidth = containerRect.width - 100; // padding
-    const containerHeight = containerRect.height - 100; // padding
-    
-    const scaleX = containerWidth / canvasDimensions.width;
-    const scaleY = containerHeight / canvasDimensions.height;
-    const newZoom = Math.min(scaleX, scaleY, 1); // Don't zoom in beyond 100%
-    
+    const containerWidth = containerRect.width - 100;
+    const containerHeight = containerRect.height - 100;
+
+    if (containerWidth <= 0 || containerHeight <= 0) {
+      return null;
+    }
+
+    const scaleX = containerWidth / width;
+    const scaleY = containerHeight / height;
+    return Math.max(0.1, Math.min(scaleX, scaleY, 1));
+  };
+
+  const zoomToFit = () => {
+    const newZoom = calculateFitZoom(canvasDimensions.width, canvasDimensions.height);
+    if (!newZoom) return;
+
     onZoomChange?.(newZoom);
     // Center the artboard
     setViewportPosition({ x: 0, y: 0 });
   };
+
+  useEffect(() => {
+    if (!fitToScreenRequest) return;
+    zoomToFit();
+  }, [fitToScreenRequest]);
+
+  useEffect(() => {
+    const prev = previousDimensionsRef.current;
+    const changed = prev.width !== canvasDimensions.width || prev.height !== canvasDimensions.height;
+
+    if (!changed) {
+      return;
+    }
+
+    previousDimensionsRef.current = canvasDimensions;
+
+    const fitZoom = calculateFitZoom(canvasDimensions.width, canvasDimensions.height);
+    if (fitZoom !== null) {
+      onZoomChange?.(fitZoom);
+      setViewportPosition({ x: 0, y: 0 });
+    }
+  }, [canvasDimensions, onZoomChange]);
+
+  useEffect(() => {
+    if (!canvas) return;
+
+    const zoomSafe = Math.max(zoom, 0.1);
+    const cornerSize = Math.min(220, Math.max(10, BASE_CONTROL_CORNER_SIZE / zoomSafe));
+    const touchCornerSize = Math.min(320, Math.max(24, BASE_CONTROL_TOUCH_CORNER_SIZE / zoomSafe));
+    const controlPadding = Math.min(48, Math.max(4, BASE_CONTROL_PADDING / zoomSafe));
+    const borderScaleFactor = Math.min(24, Math.max(1.2, BASE_BORDER_SCALE_FACTOR / zoomSafe));
+
+    canvas.getObjects().forEach((obj: any) => {
+      obj.set({
+        cornerSize,
+        touchCornerSize,
+        padding: controlPadding,
+        borderScaleFactor,
+        cornerStyle: 'circle',
+        transparentCorners: false,
+        cornerColor: CONTROL_ACCENT_COLOR,
+        cornerStrokeColor: '#ffffff',
+        borderColor: CONTROL_ACCENT_BORDER,
+      });
+      if (typeof obj.setCoords === 'function') {
+        obj.setCoords();
+      }
+    });
+
+    const activeObject = canvas.getActiveObject() as any;
+    if (activeObject) {
+      activeObject.set({
+        cornerSize,
+        touchCornerSize,
+        padding: controlPadding,
+        borderScaleFactor,
+        cornerStyle: 'circle',
+        transparentCorners: false,
+        cornerColor: CONTROL_ACCENT_COLOR,
+        cornerStrokeColor: '#ffffff',
+        borderColor: CONTROL_ACCENT_BORDER,
+      });
+      if (typeof activeObject.setCoords === 'function') {
+        activeObject.setCoords();
+      }
+    }
+
+    canvas.selectionLineWidth = Math.min(8, Math.max(1.5, 2 / zoomSafe));
+    canvas.selectionColor = CONTROL_SELECTION_FILL;
+    canvas.selectionBorderColor = CONTROL_ACCENT_BORDER;
+    canvas.selectionDashArray = [4 / zoomSafe, 3 / zoomSafe];
+    canvas.requestRenderAll();
+  }, [canvas, zoom]);
 
   const resetZoom = () => {
     onZoomChange?.(1);
@@ -226,10 +431,20 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   };
 
   const safeInsetPx = SAFE_AREA_INSET_INCHES * CANVAS_DPI;
+  const trimInsetPx = TRIM_AREA_INSET_INCHES * CANVAS_DPI;
+  const centeredOffsetX = -(canvasDimensions.width * (zoom - 1)) / 2;
+  const centeredOffsetY = -(canvasDimensions.height * (zoom - 1)) / 2;
+  const zoomSafeValue = Math.max(zoom, 0.1);
+  const safeAreaStrokeWidth = 1.5 / zoomSafeValue;
+  const trimAreaStrokeWidth = 1.5 / zoomSafeValue;
   const shouldRenderSafeArea =
     showSafeArea &&
     canvasDimensions.width > safeInsetPx * 2 &&
     canvasDimensions.height > safeInsetPx * 2;
+  const shouldRenderTrimArea =
+    showTrimArea &&
+    canvasDimensions.width > trimInsetPx * 2 &&
+    canvasDimensions.height > trimInsetPx * 2;
 
   return (
     <div 
@@ -238,7 +453,8 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
       style={{
         background: 'radial-gradient(circle, #e5e5e5 1px, transparent 1px)',
         backgroundSize: '20px 20px',
-        backgroundPosition: `${viewportPosition.x % 20}px ${viewportPosition.y % 20}px`
+        backgroundPosition: `${viewportPosition.x % 20}px ${viewportPosition.y % 20}px`,
+        touchAction: 'none'
       }}
     >
       {/* Artboard container */}
@@ -246,7 +462,7 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
         ref={artboardRef}
         className="artboard-container absolute"
         style={{
-          transform: `translate(${viewportPosition.x}px, ${viewportPosition.y}px) scale(${zoom})`,
+          transform: `translate(${viewportPosition.x + centeredOffsetX}px, ${viewportPosition.y + centeredOffsetY}px) scale(${zoom})`,
           transformOrigin: '0 0',
           left: '50%',
           top: '50%',
@@ -297,32 +513,30 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
                   top: `${safeInsetPx}px`,
                   width: `${canvasDimensions.width - safeInsetPx * 2}px`,
                   height: `${canvasDimensions.height - safeInsetPx * 2}px`,
-                  border: '1.5px dashed rgba(14, 116, 144, 0.75)',
+                  border: `${safeAreaStrokeWidth}px dashed rgba(14, 116, 144, 0.9)`,
                   borderRadius: '2px',
                   zIndex: 6,
                 }}
               />
+            </>
+          )}
+
+          {shouldRenderTrimArea && (
+            <>
               <div
                 aria-hidden="true"
                 style={{
                   position: 'absolute',
                   pointerEvents: 'none',
-                  left: `${safeInsetPx + 12}px`,
-                  top: `${safeInsetPx}px`,
-                  transform: 'translateY(-50%)',
-                  padding: '2px 6px',
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  letterSpacing: '0.02em',
-                  color: 'rgba(14, 116, 144, 0.95)',
-                  background: 'rgba(255, 255, 255, 0.9)',
-                  border: '1px solid rgba(14, 116, 144, 0.35)',
-                  borderRadius: '9999px',
-                  zIndex: 7,
+                  left: `${trimInsetPx}px`,
+                  top: `${trimInsetPx}px`,
+                  width: `${canvasDimensions.width - trimInsetPx * 2}px`,
+                  height: `${canvasDimensions.height - trimInsetPx * 2}px`,
+                  border: `${trimAreaStrokeWidth}px dotted rgba(217, 119, 6, 0.95)`,
+                  borderRadius: '2px',
+                  zIndex: 5,
                 }}
-              >
-                Safe Area
-              </div>
+              />
             </>
           )}
           

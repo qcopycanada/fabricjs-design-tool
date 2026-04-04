@@ -3,8 +3,11 @@ import React, { useEffect, useState } from 'react';
 interface BottomToolbarProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
+  onFitToScreen?: () => void;
   safeAreaVisible?: boolean;
   onToggleSafeArea?: (visible: boolean) => void;
+  trimAreaVisible?: boolean;
+  onToggleTrimArea?: (visible: boolean) => void;
   onToggleCanvasLayer?: () => void;
   currentLayer?: 'front' | 'back';
   canvasSwitchingEnabled?: boolean;
@@ -21,8 +24,11 @@ interface BottomToolbarProps {
 const BottomToolbar: React.FC<BottomToolbarProps> = ({ 
   zoom, 
   onZoomChange, 
+  onFitToScreen,
   safeAreaVisible = true,
   onToggleSafeArea,
+  trimAreaVisible = true,
+  onToggleTrimArea,
   onToggleCanvasLayer,
   currentLayer = 'front',
   canvasSwitchingEnabled = false,
@@ -85,13 +91,13 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
   };
 
   return (
-    <div className="h-12 bg-white border-t border-gray-200 flex items-center justify-between px-4">
-      <div className="flex items-center space-x-4">
+    <div className="min-h-12 bg-white border-t border-gray-200 flex items-center justify-between px-2 md:px-4 py-1 md:py-0 gap-2">
+      <div className="flex items-center space-x-2 md:space-x-3 min-w-0 overflow-x-auto">
         {/* Keyboard Shortcuts Button */}
         {onShowKeyboardShortcuts && (
           <button
             onClick={onShowKeyboardShortcuts}
-            className="flex items-center space-x-2 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm"
+            className="flex items-center space-x-2 px-2.5 md:px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors text-sm"
             title="View keyboard shortcuts (Press ? key)"
           >
             <span className="text-base">⌨️</span>
@@ -99,16 +105,16 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
           </button>
         )}
         
-        <div className="text-sm text-gray-600">
+        <div className="hidden lg:block text-sm text-gray-600 truncate">
           Hold <kbd className="px-1 py-0.5 text-xs bg-gray-100 border border-gray-300 rounded">SPACE</kbd> or 
           <kbd className="px-1 py-0.5 text-xs bg-gray-100 border border-gray-300 rounded ml-1">H</kbd> to pan • 
           <span className="text-xs text-gray-500">Mouse wheel to zoom</span>
         </div>
       </div>
 
-      <div className="flex items-center space-x-4 min-w-0">
+      <div className="flex items-center space-x-2 md:space-x-4 min-w-0">
         {onToggleCanvasLayer && onToggleCanvasSwitching && (
-          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 md:space-x-3 overflow-x-auto">
             {onToggleSafeArea && (
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -116,8 +122,22 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
                   checked={safeAreaVisible}
                   onChange={(e) => onToggleSafeArea(e.target.checked)}
                   className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500 focus:ring-2"
+                  aria-label="Toggle safe area"
                 />
-                <span className="text-xs text-gray-600">Safe Area</span>
+                <span className="hidden sm:inline text-xs text-gray-600">Safe Area</span>
+              </label>
+            )}
+
+            {onToggleTrimArea && (
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={trimAreaVisible}
+                  onChange={(e) => onToggleTrimArea(e.target.checked)}
+                  className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500 focus:ring-2"
+                  aria-label="Toggle trim area"
+                />
+                <span className="hidden sm:inline text-xs text-gray-600">Trim Area</span>
               </label>
             )}
 
@@ -144,7 +164,7 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
         )}
 
         {showCanvasTabs && canvases.length > 0 && (
-          <div className="flex items-center space-x-2 min-w-0">
+          <div className="hidden md:flex items-center space-x-2 min-w-0">
             <span className="text-xs text-gray-500">Canvases</span>
             <div className="flex items-center gap-1 overflow-x-auto max-w-[380px] pb-1">
               {canvases.map((canvas) => (
@@ -188,16 +208,25 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
         <div className="flex items-center space-x-2">
           <button
             onClick={() => onZoomChange(Math.max(0.1, zoom - 0.1))}
-            className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded"
+            className="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded"
           >
             −
           </button>
-          <span className="text-sm font-medium w-12 text-center">
+          <span className="text-sm font-medium w-14 md:w-12 text-center">
             {Math.round(zoom * 100)}%
           </span>
+          {onFitToScreen && (
+            <button
+              onClick={onFitToScreen}
+              className="h-10 md:h-8 px-2.5 text-xs font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-100"
+              title="Center and fit canvas to screen"
+            >
+              Fit
+            </button>
+          )}
           <button
             onClick={() => onZoomChange(Math.min(3, zoom + 0.1))}
-            className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded"
+            className="w-10 h-10 md:w-8 md:h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded"
           >
             +
           </button>
