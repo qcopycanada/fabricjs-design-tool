@@ -208,8 +208,12 @@ function App() {
   const [selectedTool, setSelectedTool] = useState<string>('select');
   const [canvasSwitchingEnabled, setCanvasSwitchingEnabled] = useState<boolean>(false);
   const [safeAreaVisible, setSafeAreaVisible] = useState<boolean>(true);
+  const [trimAreaVisible, setTrimAreaVisible] = useState<boolean>(true);
+  const [fitToScreenRequest, setFitToScreenRequest] = useState(0);
   const [isQRCodeDialogOpen, setIsQRCodeDialogOpen] = useState<boolean>(false);
   const [isKeyboardShortcutsModalOpen, setIsKeyboardShortcutsModalOpen] = useState<boolean>(false);
+  const [mobilePanel, setMobilePanel] = useState<'none' | 'layers' | 'properties' | 'canvases'>('none');
+  const [isMobilePanelInteracting, setIsMobilePanelInteracting] = useState<boolean>(false);
   const [canvasThumbnails, setCanvasThumbnails] = useState<Record<string, string>>({});
   const [editingFloatingCanvasId, setEditingFloatingCanvasId] = useState<string | null>(null);
   const [editingFloatingCanvasName, setEditingFloatingCanvasName] = useState('');
@@ -1098,8 +1102,21 @@ function App() {
     await applyExternalProject(payload);
   }, [applyExternalProject]);
 
+  useEffect(() => {
+    const closePanelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobilePanel('none');
+      }
+    };
+
+    document.addEventListener('keydown', closePanelOnEscape);
+    return () => {
+      document.removeEventListener('keydown', closePanelOnEscape);
+    };
+  }, []);
+
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       <Header 
         selectedTool={selectedTool}
         onToolSelect={setSelectedTool}
@@ -1142,17 +1159,43 @@ function App() {
         canGroup={canGroup}
         canUngroup={canUngroup}
       />
+
+      <div className="xl:hidden border-b border-gray-200 bg-white px-2 py-2">
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            onClick={() => setMobilePanel(prev => prev === 'layers' ? 'none' : 'layers')}
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${mobilePanel === 'layers' ? 'bg-cyan-100 text-cyan-700' : 'bg-gray-100 text-gray-700'}`}
+          >
+            Layers
+          </button>
+          <button
+            onClick={() => setMobilePanel(prev => prev === 'properties' ? 'none' : 'properties')}
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${mobilePanel === 'properties' ? 'bg-cyan-100 text-cyan-700' : 'bg-gray-100 text-gray-700'}`}
+          >
+            Properties
+          </button>
+          <button
+            onClick={() => setMobilePanel(prev => prev === 'canvases' ? 'none' : 'canvases')}
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${mobilePanel === 'canvases' ? 'bg-cyan-100 text-cyan-700' : 'bg-gray-100 text-gray-700'}`}
+          >
+            Canvases
+          </button>
+        </div>
+      </div>
       
       <div className="flex flex-1 overflow-hidden">
-        <LeftSidebar 
-          objects={canvasObjects}
-          selectedObjectId={selectedLayerObjectId}
-          onSelectObject={selectObject}
-          onToggleVisibility={toggleObjectVisibility}
-          onDeleteObject={deleteObject}
-          onReorderObjects={reorderObjects}
-          onRenameObject={renameObject}
-        />
+        <div className="hidden xl:block">
+          <LeftSidebar 
+            objects={canvasObjects}
+            selectedObjectId={selectedLayerObjectId}
+            onSelectObject={selectObject}
+            onToggleVisibility={toggleObjectVisibility}
+            onDeleteObject={deleteObject}
+            onReorderObjects={reorderObjects}
+            onRenameObject={renameObject}
+            className="w-64"
+          />
+        </div>
         
         <div className="flex-1 flex flex-col relative">
           <CanvasWrapper 
@@ -1161,6 +1204,8 @@ function App() {
             zoom={canvasState.zoom}
             editorMode={editorMode}
             showSafeArea={safeAreaVisible}
+            showTrimArea={trimAreaVisible}
+            fitToScreenRequest={fitToScreenRequest}
             canvasDimensions={canvasDimensions}
             onZoomChange={(zoom: number) => setCanvasState(prev => ({ ...prev, zoom }))}
             onCanvasDimensionsChange={updateCanvasDimensionsFromCanvas}
@@ -1169,8 +1214,11 @@ function App() {
           <BottomToolbar 
             zoom={canvasState.zoom}
             onZoomChange={(zoom: number) => setCanvasState(prev => ({ ...prev, zoom }))}
+            onFitToScreen={() => setFitToScreenRequest(prev => prev + 1)}
             safeAreaVisible={safeAreaVisible}
             onToggleSafeArea={setSafeAreaVisible}
+            trimAreaVisible={trimAreaVisible}
+            onToggleTrimArea={setTrimAreaVisible}
             onToggleCanvasLayer={toggleCanvasLayer}
             currentLayer={currentCanvasLayer}
             canvasSwitchingEnabled={canvasSwitchingEnabled}
@@ -1187,7 +1235,7 @@ function App() {
           />
 
           {canvasDocuments.length > 0 && (
-            <div className="absolute top-4 right-4 z-20 w-44 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-xl shadow-lg p-2">
+            <div className="absolute top-4 right-4 z-20 hidden xl:block w-44 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-xl shadow-lg p-2">
               <div className="px-1 pb-2 text-xs font-medium text-gray-500">Canvases</div>
               <div className="max-h-[58vh] overflow-y-auto space-y-2">
                 {canvasDocuments.map((doc) => {
@@ -1259,23 +1307,165 @@ function App() {
           )}
         </div>
         
-        <RightSidebar 
-          selectedObject={canvasState.selectedObject}
-          canvas={canvasState.canvas}
-          canvasDimensions={canvasDimensions}
-          updateCanvasObjects={updateCanvasObjects}
-          updateCanvasDimensions={updateCanvasDimensions}
-          canvasCount={canvasDocuments.length}
-          onCanvasCountChange={handleCanvasCountChange}
-          canvasFormat={canvasFormat}
-          onCanvasFormatChange={handleCanvasFormatChange}
-          editorMode={editorMode}
-          updateQRCodeColors={updateQRCodeColors}
-          onLockStateChange={() => persistActiveCanvas()}
-          onObjectUpdate={updateCanvasObjects}
-          alignmentGuides={alignmentGuides}
-        />
+        <div className="hidden xl:block">
+          <RightSidebar 
+            selectedObject={canvasState.selectedObject}
+            canvas={canvasState.canvas}
+            canvasDimensions={canvasDimensions}
+            updateCanvasObjects={updateCanvasObjects}
+            updateCanvasDimensions={updateCanvasDimensions}
+            canvasCount={canvasDocuments.length}
+            onCanvasCountChange={handleCanvasCountChange}
+            canvasFormat={canvasFormat}
+            onCanvasFormatChange={handleCanvasFormatChange}
+            editorMode={editorMode}
+            updateQRCodeColors={updateQRCodeColors}
+            onLockStateChange={() => persistActiveCanvas()}
+            onObjectUpdate={updateCanvasObjects}
+            alignmentGuides={alignmentGuides}
+            className="w-80"
+          />
+        </div>
       </div>
+
+      {mobilePanel !== 'none' && (
+        <div className="xl:hidden fixed inset-x-0 bottom-0 z-40 pointer-events-none">
+          <div
+            className={`pointer-events-auto mx-2 mb-2 max-h-[52vh] rounded-t-2xl border border-gray-200 backdrop-blur-sm shadow-2xl overflow-hidden transition-opacity duration-150 ${isMobilePanelInteracting ? 'bg-white/80 opacity-85' : 'bg-white/95 opacity-100'}`}
+            onPointerDownCapture={(event) => {
+              const target = event.target as HTMLElement;
+              if (target.closest('input, select, textarea, button, [role="slider"]')) {
+                setIsMobilePanelInteracting(true);
+              }
+            }}
+            onPointerUpCapture={() => setIsMobilePanelInteracting(false)}
+            onPointerCancel={() => setIsMobilePanelInteracting(false)}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-700">
+                {mobilePanel === 'layers' && 'Layers'}
+                {mobilePanel === 'properties' && 'Properties'}
+                {mobilePanel === 'canvases' && 'Canvases'}
+              </h3>
+              <button
+                onClick={() => setMobilePanel('none')}
+                className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
+              >
+                Close
+              </button>
+            </div>
+
+            {mobilePanel === 'layers' && (
+              <div className="h-[calc(52vh-57px)]">
+                <LeftSidebar 
+                  objects={canvasObjects}
+                  selectedObjectId={selectedLayerObjectId}
+                  onSelectObject={(objectId) => {
+                    selectObject(objectId);
+                  }}
+                  onToggleVisibility={toggleObjectVisibility}
+                  onDeleteObject={deleteObject}
+                  onReorderObjects={reorderObjects}
+                  onRenameObject={renameObject}
+                  className="w-full"
+                />
+              </div>
+            )}
+
+            {mobilePanel === 'properties' && (
+              <div className="h-[calc(52vh-57px)]">
+                <RightSidebar 
+                  selectedObject={canvasState.selectedObject}
+                  canvas={canvasState.canvas}
+                  canvasDimensions={canvasDimensions}
+                  updateCanvasObjects={updateCanvasObjects}
+                  updateCanvasDimensions={updateCanvasDimensions}
+                  canvasCount={canvasDocuments.length}
+                  onCanvasCountChange={handleCanvasCountChange}
+                  canvasFormat={canvasFormat}
+                  onCanvasFormatChange={handleCanvasFormatChange}
+                  editorMode={editorMode}
+                  updateQRCodeColors={updateQRCodeColors}
+                  onLockStateChange={() => persistActiveCanvas()}
+                  onObjectUpdate={updateCanvasObjects}
+                  alignmentGuides={alignmentGuides}
+                  className="w-full"
+                />
+              </div>
+            )}
+
+            {mobilePanel === 'canvases' && (
+              <div className="h-[calc(52vh-57px)] overflow-y-auto p-4 space-y-3">
+                {canvasDocuments.map((doc) => {
+                  const isActive = activeCanvasId === doc.id;
+                  const isEditing = editorMode === 'dev' && editingFloatingCanvasId === doc.id;
+
+                  return (
+                    <div
+                      key={doc.id}
+                      className={`w-full rounded-lg border p-2 transition-colors ${
+                        isActive
+                          ? 'border-cyan-500 bg-cyan-50'
+                          : 'border-gray-200 bg-white'
+                      }`}
+                    >
+                      <button
+                        onClick={() => {
+                          void handleSwitchCanvas(doc.id);
+                          setMobilePanel('none');
+                        }}
+                        className="w-full text-left"
+                      >
+                        <div className="w-full aspect-[3/2] overflow-hidden rounded border border-gray-200 bg-gray-100 mb-2">
+                          {canvasThumbnails[doc.id] ? (
+                            <img
+                              src={canvasThumbnails[doc.id]}
+                              alt={`${doc.name} preview`}
+                              className="w-full h-full object-cover"
+                              draggable={false}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">Preview</div>
+                          )}
+                        </div>
+                      </button>
+
+                      {isEditing ? (
+                        <input
+                          autoFocus
+                          value={editingFloatingCanvasName}
+                          onChange={(e) => setEditingFloatingCanvasName(e.target.value)}
+                          onBlur={commitFloatingCanvasRename}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              commitFloatingCanvasRename();
+                            }
+                            if (e.key === 'Escape') {
+                              cancelFloatingCanvasRename();
+                            }
+                          }}
+                          className="w-full px-1.5 py-1 text-sm border border-cyan-400 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                        />
+                      ) : (
+                        <div
+                          onDoubleClick={(e) => {
+                            e.preventDefault();
+                            startFloatingCanvasRename(doc.id, doc.name);
+                          }}
+                          className={`text-sm font-medium truncate ${isActive ? 'text-cyan-700' : 'text-gray-700'}`}
+                          title={editorMode === 'dev' ? `${doc.name} (double-click to rename)` : doc.name}
+                        >
+                          {doc.name}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* QR Code Dialog */}
       <QRCodeDialog
