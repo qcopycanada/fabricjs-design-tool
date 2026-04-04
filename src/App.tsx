@@ -214,9 +214,14 @@ function App() {
   const [isKeyboardShortcutsModalOpen, setIsKeyboardShortcutsModalOpen] = useState<boolean>(false);
   const [mobilePanel, setMobilePanel] = useState<'none' | 'layers' | 'properties' | 'canvases'>('none');
   const [isMobilePanelInteracting, setIsMobilePanelInteracting] = useState<boolean>(false);
+  const [isMobilePanelFloating, setIsMobilePanelFloating] = useState<boolean>(false);
+  const [isDraggingMobilePanel, setIsDraggingMobilePanel] = useState<boolean>(false);
+  const [mobilePanelPosition, setMobilePanelPosition] = useState({ x: 8, y: 120 });
   const [canvasThumbnails, setCanvasThumbnails] = useState<Record<string, string>>({});
   const [editingFloatingCanvasId, setEditingFloatingCanvasId] = useState<string | null>(null);
   const [editingFloatingCanvasName, setEditingFloatingCanvasName] = useState('');
+  const floatingPanelRef = useRef<HTMLDivElement | null>(null);
+  const mobilePanelDragOffsetRef = useRef({ x: 0, y: 0 });
 
   const selectedLayerObjectId = useMemo(() => {
     if (!canvasState.selectedObject) return null;
@@ -1115,6 +1120,47 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!canvasState.selectedObject) return;
+    if (typeof window === 'undefined') return;
+    if (window.innerWidth >= 1280) return;
+    setMobilePanel('properties');
+  }, [canvasState.selectedObject]);
+
+  useEffect(() => {
+    if (!isDraggingMobilePanel || !isMobilePanelFloating) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const panel = floatingPanelRef.current;
+      const panelWidth = panel?.offsetWidth ?? 320;
+      const panelHeight = panel?.offsetHeight ?? 360;
+
+      const minX = 8;
+      const maxX = Math.max(minX, window.innerWidth - panelWidth - 8);
+      const minY = 56;
+      const maxY = Math.max(minY, window.innerHeight - panelHeight - 8);
+
+      const nextX = Math.min(maxX, Math.max(minX, event.clientX - mobilePanelDragOffsetRef.current.x));
+      const nextY = Math.min(maxY, Math.max(minY, event.clientY - mobilePanelDragOffsetRef.current.y));
+
+      setMobilePanelPosition({ x: nextX, y: nextY });
+    };
+
+    const handlePointerUp = () => {
+      setIsDraggingMobilePanel(false);
+    };
+
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+    document.addEventListener('pointercancel', handlePointerUp);
+
+    return () => {
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+      document.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [isDraggingMobilePanel, isMobilePanelFloating]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       <Header 
@@ -1329,9 +1375,15 @@ function App() {
       </div>
 
       {mobilePanel !== 'none' && (
-        <div className="xl:hidden fixed inset-x-0 bottom-0 z-40 pointer-events-none">
+        <div className="xl:hidden fixed inset-0 z-40 pointer-events-none">
           <div
-            className={`pointer-events-auto mx-2 mb-2 max-h-[52vh] rounded-t-2xl border border-gray-200 backdrop-blur-sm shadow-2xl overflow-hidden transition-opacity duration-150 ${isMobilePanelInteracting ? 'bg-white/80 opacity-85' : 'bg-white/95 opacity-100'}`}
+            ref={floatingPanelRef}
+            className={`pointer-events-auto border border-gray-200 backdrop-blur-sm shadow-2xl overflow-hidden transition-opacity duration-150 ${isMobilePanelFloating ? 'absolute rounded-xl max-h-[62vh]' : 'absolute inset-x-0 bottom-0 mx-2 mb-2 rounded-t-2xl max-h-[52vh]'} ${isMobilePanelInteracting ? 'bg-white/80 opacity-85' : 'bg-white/95 opacity-100'}`}
+            style={isMobilePanelFloating ? {
+              left: `${mobilePanelPosition.x}px`,
+              top: `${mobilePanelPosition.y}px`,
+              width: 'min(380px, calc(100vw - 16px))',
+            } : undefined}
             onPointerDownCapture={(event) => {
               const target = event.target as HTMLElement;
               if (target.closest('input, select, textarea, button, [role="slider"]')) {
@@ -1341,18 +1393,44 @@ function App() {
             onPointerUpCapture={() => setIsMobilePanelInteracting(false)}
             onPointerCancel={() => setIsMobilePanelInteracting(false)}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-700">
+            <div
+              className={`flex items-center justify-between px-4 py-3 border-b border-gray-200 ${isMobilePanelFloating ? 'cursor-move' : ''}`}
+              onPointerDown={(event) => {
+                if (!isMobilePanelFloating) return;
+                const target = event.target as HTMLElement;
+                if (target.closest('button, input, select, textarea')) return;
+
+                mobilePanelDragOffsetRef.current = {
+                  x: event.clientX - mobilePanelPosition.x,
+                  y: event.clientY - mobilePanelPosition.y,
+                };
+                setIsDraggingMobilePanel(true);
+              }}
+            >
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                 {mobilePanel === 'layers' && 'Layers'}
                 {mobilePanel === 'properties' && 'Properties'}
                 {mobilePanel === 'canvases' && 'Canvases'}
+                {isMobilePanelFloating && <span className="text-xs text-gray-400">Drag</span>}
               </h3>
-              <button
-                onClick={() => setMobilePanel('none')}
-                className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    setIsMobilePanelFloating(prev => !prev);
+                    setIsDraggingMobilePanel(false);
+                  }}
+                  className="rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                  title={isMobilePanelFloating ? 'Dock panel to bottom' : 'Float panel and drag anywhere'}
+                >
+                  {isMobilePanelFloating ? 'Dock' : 'Float'}
+                </button>
+                <button
+                  onClick={() => setMobilePanel('none')}
+                  className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100"
+                >
+                  Close
+                </button>
+              </div>
             </div>
 
             {mobilePanel === 'layers' && (
