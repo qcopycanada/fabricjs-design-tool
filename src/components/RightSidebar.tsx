@@ -4,9 +4,21 @@ import { Shadow, Gradient, Rect, filters, FabricImage } from 'fabric';
 import AlignmentGuidesSettings from './AlignmentGuidesSettings';
 import type { AlignmentGuidesConfig } from '../types/canvas';
 
-const CANVAS_DPI = 300;
-const SVG_COLOR_REGEX = /(#[0-9a-fA-F]{3,8}|rgba?\([^\)]+\)|hsla?\([^\)]+\))/g;
+const CANVAS_DPI = 150;
 const STYLE_COLOR_DECLARATION_REGEX = /(fill|stroke|stop-color|color)\s*:\s*([^;]+)/gi;
+
+interface CanvasMockup {
+  url: string;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  opacity: number;
+  visible: boolean;
+  lockedInDev: boolean;
+  imageWidth: number;
+  imageHeight: number;
+}
 
 const normalizeSvgColorToken = (token: string): string => token.replace(/!important/gi, '').trim().toLowerCase();
 
@@ -149,6 +161,8 @@ interface RightSidebarProps {
   onCanvasFormatChange?: (format: 'portrait' | 'landscape') => void;
   editorMode?: 'dev' | 'prod';
   updateQRCodeColors?: (qrObject: FabricImage, foregroundColor: string, backgroundColor: string) => void;
+  mockup?: CanvasMockup;
+  onMockupChange?: (mockup?: CanvasMockup) => void;
   alignmentGuides?: {
     config: AlignmentGuidesConfig;
     updateConfig: (config: Partial<AlignmentGuidesConfig>) => void;
@@ -171,6 +185,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   onCanvasFormatChange,
   editorMode = 'dev',
   updateQRCodeColors,
+  mockup,
+  onMockupChange,
   alignmentGuides,
   className = 'w-80'
 }) => {
@@ -184,6 +200,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   const [backgroundGradientType, setBackgroundGradientType] = useState<'linear' | 'radial'>('linear');
   const [backgroundGradientStartColor, setBackgroundGradientStartColor] = useState('#3b82f6');
   const [backgroundGradientEndColor, setBackgroundGradientEndColor] = useState('#1d4ed8');
+  const [mockupUrl, setMockupUrl] = useState('');
+  const [mockupUrlError, setMockupUrlError] = useState<string | null>(null);
 
   const inchesFromPixels = (pixels: number) => Number((pixels / CANVAS_DPI).toFixed(2));
   const pixelsFromInches = (inches: number) => Math.max(1, Math.round(inches * CANVAS_DPI));
@@ -316,6 +334,86 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   useEffect(() => {
     setLocalCanvasCount(canvasCount);
   }, [canvasCount]);
+
+  useEffect(() => {
+    if (mockup?.url) {
+      setMockupUrl(mockup.url);
+      setMockupUrlError(null);
+    }
+  }, [mockup]);
+
+  const buildDefaultMockup = (url: string, imageWidth: number, imageHeight: number): CanvasMockup => {
+    const artboardWidth = canvasDimensions?.width || canvas?.width || 800;
+    const artboardHeight = canvasDimensions?.height || canvas?.height || 600;
+    const baseScale = Math.max((artboardWidth * 1.2) / imageWidth, (artboardHeight * 1.2) / imageHeight);
+
+    return {
+      url,
+      x: artboardWidth / 2,
+      y: artboardHeight / 2,
+      scale: baseScale,
+      rotation: 0,
+      opacity: 1,
+      visible: true,
+      lockedInDev: false,
+      imageWidth,
+      imageHeight,
+    };
+  };
+
+  const addMockupFromUrl = () => {
+    if (editorMode !== 'dev' || !onMockupChange) return;
+
+    const nextUrl = mockupUrl.trim();
+    if (!nextUrl) {
+      setMockupUrlError('Enter a valid image URL.');
+      return;
+    }
+
+    setMockupUrlError(null);
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => {
+      const imageWidth = Math.max(1, image.naturalWidth || 1);
+      const imageHeight = Math.max(1, image.naturalHeight || 1);
+      const baseline = buildDefaultMockup(nextUrl, imageWidth, imageHeight);
+      onMockupChange({
+        ...baseline,
+        opacity: mockup?.opacity ?? baseline.opacity,
+        lockedInDev: mockup?.lockedInDev ?? false,
+      });
+    };
+    image.onerror = () => {
+      setMockupUrlError('Unable to load image from URL. Please verify and try again.');
+    };
+    image.src = nextUrl;
+  };
+
+  const removeMockup = () => {
+    if (editorMode !== 'dev' || !onMockupChange) return;
+    onMockupChange(undefined);
+  };
+
+  const resetMockupTransform = () => {
+    if (!mockup || editorMode !== 'dev' || !onMockupChange) return;
+    onMockupChange(buildDefaultMockup(mockup.url, mockup.imageWidth, mockup.imageHeight));
+  };
+
+  const updateMockupOpacity = (nextOpacity: number) => {
+    if (!mockup || editorMode !== 'dev' || !onMockupChange) return;
+    const clamped = Math.max(0, Math.min(1, nextOpacity));
+    onMockupChange({ ...mockup, opacity: clamped });
+  };
+
+  const updateMockupScale = (nextScale: number) => {
+    if (!mockup || editorMode !== 'dev' || !onMockupChange) return;
+    onMockupChange({ ...mockup, scale: Math.max(0.05, nextScale) });
+  };
+
+  const toggleMockupLockInDev = (locked: boolean) => {
+    if (!mockup || editorMode !== 'dev' || !onMockupChange) return;
+    onMockupChange({ ...mockup, lockedInDev: locked });
+  };
 
   const updateObjectProperty = (property: string, value: any) => {
     if (selectedObject) {
@@ -614,6 +712,117 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
       )}
     </div>
   );
+
+  const renderMockupControls = () => {
+    if (editorMode === 'prod') {
+      return null;
+    }
+
+    return (
+    <div>
+      <h5 className="text-sm font-medium text-gray-600 mb-3">Mockup Placeholders</h5>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Image URL</label>
+          <input
+            type="text"
+            value={mockupUrl}
+            onChange={(e) => {
+              setMockupUrl(e.target.value);
+              if (mockupUrlError) {
+                setMockupUrlError(null);
+              }
+            }}
+            placeholder="https://..."
+            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+          />
+          {mockupUrlError && (
+            <p className="mt-1 text-xs text-red-600">{mockupUrlError}</p>
+          )}
+        </div>
+
+        <button
+          onClick={addMockupFromUrl}
+          disabled={editorMode !== 'dev'}
+          className="flex items-center justify-center space-x-2 w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Upload size={16} />
+          <span>Add Mockup</span>
+        </button>
+
+        <button
+          onClick={removeMockup}
+          disabled={editorMode !== 'dev' || !mockup}
+          className="flex items-center justify-center space-x-2 w-full px-3 py-2 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Trash2 size={16} />
+          <span>Remove Mockup</span>
+        </button>
+
+        {mockup && (
+          <div className="space-y-3 rounded-md border border-gray-200 p-3 bg-gray-50">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Opacity</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={mockup.opacity}
+                  onChange={(e) => updateMockupOpacity(Number(e.target.value))}
+                  disabled={editorMode !== 'dev'}
+                  className="flex-1"
+                />
+                <span className="w-12 text-xs text-gray-600 text-right">
+                  {Math.round(mockup.opacity * 100)}%
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Scale</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0.05"
+                  max="4"
+                  step="0.01"
+                  value={mockup.scale}
+                  onChange={(e) => updateMockupScale(Number(e.target.value))}
+                  disabled={editorMode !== 'dev'}
+                  className="flex-1"
+                />
+                <span className="w-12 text-xs text-gray-600 text-right">
+                  {Math.round(mockup.scale * 100)}%
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={resetMockupTransform}
+              disabled={editorMode !== 'dev'}
+              className="w-full px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Reset Transform
+            </button>
+
+            <label className="flex items-center justify-between text-xs text-gray-700">
+              <span>Lock In Dev Mode</span>
+              <input
+                type="checkbox"
+                checked={Boolean(mockup.lockedInDev)}
+                onChange={(e) => toggleMockupLockInDev(e.target.checked)}
+                disabled={editorMode !== 'dev'}
+                className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+              />
+            </label>
+          </div>
+        )}
+      </div>
+    </div>
+    );
+  };
 
   return (
     <div className={`${className} bg-white border-l border-gray-200 h-full flex flex-col`}>
@@ -1285,6 +1494,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                       <Trash2 size={16} />
                       <span>Remove Background</span>
                     </button>
+
+                    {renderMockupControls()}
                   </div>
                 </div>
               </div>
@@ -2248,6 +2459,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                       <Trash2 size={16} />
                       <span>Remove Background</span>
                     </button>
+
+                    {renderMockupControls()}
                   </div>
                 </div>
 
