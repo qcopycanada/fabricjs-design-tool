@@ -7,6 +7,19 @@ import './App.css';
 type CanvasFormat = 'portrait' | 'landscape';
 type EditorMode = 'dev' | 'prod';
 
+interface CanvasMockup {
+  url: string;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  opacity: number;
+  visible: boolean;
+  lockedInDev: boolean;
+  imageWidth: number;
+  imageHeight: number;
+}
+
 interface CanvasDocument {
   id: string;
   name: string;
@@ -15,6 +28,7 @@ interface CanvasDocument {
   format: CanvasFormat;
   data: string | null;
   lockStates?: ObjectLockState[];
+  mockup?: CanvasMockup;
 }
 
 interface ObjectLockState {
@@ -36,6 +50,7 @@ interface EmbeddedCanvasPayload {
   format?: CanvasFormat;
   data?: string | Record<string, unknown> | null;
   lockStates?: ObjectLockState[];
+  mockup?: Partial<CanvasMockup>;
 }
 
 interface EmbeddedProjectPayload {
@@ -84,6 +99,29 @@ const LOCK_SERIALIZATION_PROPS = [
 ];
 
 const PX_PER_INCH = 300;
+
+const normalizeMockupPayload = (mockup: Partial<CanvasMockup> | undefined, width: number, height: number): CanvasMockup | undefined => {
+  if (!mockup || typeof mockup.url !== 'string' || !mockup.url.trim()) {
+    return undefined;
+  }
+
+  const imageWidth = Math.max(1, Number(mockup.imageWidth) || width);
+  const imageHeight = Math.max(1, Number(mockup.imageHeight) || height);
+  const fallbackScale = Math.max((width * 1.2) / imageWidth, (height * 1.2) / imageHeight);
+
+  return {
+    url: mockup.url.trim(),
+    x: Number.isFinite(mockup.x as number) ? Number(mockup.x) : width / 2,
+    y: Number.isFinite(mockup.y as number) ? Number(mockup.y) : height / 2,
+    scale: Math.max(0.05, Number(mockup.scale) || fallbackScale),
+    rotation: Number.isFinite(mockup.rotation as number) ? Number(mockup.rotation) : 0,
+    opacity: Math.max(0, Math.min(1, Number(mockup.opacity) || 1)),
+    visible: mockup.visible !== false,
+    lockedInDev: Boolean(mockup.lockedInDev),
+    imageWidth,
+    imageHeight,
+  };
+};
 
 const getDefaultLockState = (): ObjectLockState => ({
   lockMovementX: false,
@@ -222,6 +260,8 @@ function App() {
   const [editingFloatingCanvasName, setEditingFloatingCanvasName] = useState('');
   const floatingPanelRef = useRef<HTMLDivElement | null>(null);
   const mobilePanelDragOffsetRef = useRef({ x: 0, y: 0 });
+  const mobilePanelRafRef = useRef<number | null>(null);
+  const pendingPanelPositionRef = useRef<{ x: number; y: number } | null>(null);
 
   const selectedLayerObjectId = useMemo(() => {
     if (!canvasState.selectedObject) return null;
@@ -230,6 +270,35 @@ function App() {
     );
     return selectedLayer?.id ?? null;
   }, [canvasObjects, canvasState.selectedObject]);
+
+  const activeCanvasMockup = useMemo(() => {
+    return canvasDocuments.find((doc) => doc.id === activeCanvasId)?.mockup;
+  }, [activeCanvasId, canvasDocuments]);
+
+  const hasVisibleMockup = Boolean(activeCanvasMockup?.url && activeCanvasMockup.visible);
+
+  useEffect(() => {
+    if (!canvasState.canvas) return;
+
+    const canvas = canvasState.canvas as any;
+    const backgroundColor = canvas.backgroundColor;
+    const isTransparentBackground = typeof backgroundColor === 'string' && (
+      backgroundColor === 'transparent'
+      || backgroundColor === 'rgba(0,0,0,0)'
+      || backgroundColor === 'rgba(255,255,255,0)'
+    );
+
+    if (hasVisibleMockup && !isTransparentBackground) {
+      canvas.backgroundColor = 'rgba(0,0,0,0)';
+      canvas.renderAll();
+      return;
+    }
+
+    if (!hasVisibleMockup && isTransparentBackground) {
+      canvas.backgroundColor = CANVAS_DEFAULTS.BACKGROUND_COLOR;
+      canvas.renderAll();
+    }
+  }, [canvasState.canvas, hasVisibleMockup]);
 
   useEffect(() => {
     const envHideToggle = import.meta.env.VITE_HIDE_MODE_TOGGLE === 'true';
@@ -382,6 +451,7 @@ function App() {
       format,
       data,
       lockStates: Array.isArray(payload.lockStates) ? payload.lockStates : undefined,
+      mockup: normalizeMockupPayload(payload.mockup, width, height),
     };
   }, []);
 
@@ -476,6 +546,14 @@ function App() {
     setCanvasState(prev => ({ ...prev, selectedObject: null }));
     updateCanvasObjects();
   }, [applyLockStatesToCurrentCanvas, canvasState.canvas, setCanvasState, updateCanvasObjects]);
+
+  const updateActiveCanvasMockup = useCallback((nextMockup?: CanvasMockup) => {
+    setCanvasDocumentsSynced((prev) => prev.map((doc) => (
+      doc.id === activeCanvasId
+        ? { ...doc, mockup: nextMockup }
+        : doc
+    )));
+  }, [activeCanvasId, setCanvasDocumentsSynced]);
 
   const applyExternalProject = useCallback(async (input: unknown) => {
     const normalized = normalizeProjectPayload(input);
@@ -1130,6 +1208,13 @@ function App() {
   useEffect(() => {
     if (!isDraggingMobilePanel || !isMobilePanelFloating) return;
 
+    const flushPendingPosition = () => {
+      mobilePanelRafRef.current = null;
+      if (!pendingPanelPositionRef.current) return;
+      setMobilePanelPosition(pendingPanelPositionRef.current);
+      pendingPanelPositionRef.current = null;
+    };
+
     const handlePointerMove = (event: PointerEvent) => {
       const panel = floatingPanelRef.current;
       const panelWidth = panel?.offsetWidth ?? 320;
@@ -1143,10 +1228,43 @@ function App() {
       const nextX = Math.min(maxX, Math.max(minX, event.clientX - mobilePanelDragOffsetRef.current.x));
       const nextY = Math.min(maxY, Math.max(minY, event.clientY - mobilePanelDragOffsetRef.current.y));
 
-      setMobilePanelPosition({ x: nextX, y: nextY });
+      pendingPanelPositionRef.current = { x: nextX, y: nextY };
+      if (mobilePanelRafRef.current === null) {
+        mobilePanelRafRef.current = window.requestAnimationFrame(flushPendingPosition);
+      }
     };
 
     const handlePointerUp = () => {
+      if (mobilePanelRafRef.current !== null) {
+        window.cancelAnimationFrame(mobilePanelRafRef.current);
+        mobilePanelRafRef.current = null;
+      }
+
+      const panel = floatingPanelRef.current;
+      const panelWidth = panel?.offsetWidth ?? 320;
+      const panelHeight = panel?.offsetHeight ?? 360;
+      const minX = 8;
+      const maxX = Math.max(minX, window.innerWidth - panelWidth - 8);
+      const minY = 56;
+      const maxY = Math.max(minY, window.innerHeight - panelHeight - 8);
+
+      const currentPosition = pendingPanelPositionRef.current ?? mobilePanelPosition;
+      pendingPanelPositionRef.current = null;
+
+      const distLeft = Math.abs(currentPosition.x - minX);
+      const distRight = Math.abs(maxX - currentPosition.x);
+      const distTop = Math.abs(currentPosition.y - minY);
+      const distBottom = Math.abs(maxY - currentPosition.y);
+
+      const nearest = Math.min(distLeft, distRight, distTop, distBottom);
+
+      const snappedPosition = { ...currentPosition };
+      if (nearest === distLeft) snappedPosition.x = minX;
+      else if (nearest === distRight) snappedPosition.x = maxX;
+      else if (nearest === distTop) snappedPosition.y = minY;
+      else snappedPosition.y = maxY;
+
+      setMobilePanelPosition(snappedPosition);
       setIsDraggingMobilePanel(false);
     };
 
@@ -1155,11 +1273,15 @@ function App() {
     document.addEventListener('pointercancel', handlePointerUp);
 
     return () => {
+      if (mobilePanelRafRef.current !== null) {
+        window.cancelAnimationFrame(mobilePanelRafRef.current);
+        mobilePanelRafRef.current = null;
+      }
       document.removeEventListener('pointermove', handlePointerMove);
       document.removeEventListener('pointerup', handlePointerUp);
       document.removeEventListener('pointercancel', handlePointerUp);
     };
-  }, [isDraggingMobilePanel, isMobilePanelFloating]);
+  }, [isDraggingMobilePanel, isMobilePanelFloating, mobilePanelPosition]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
@@ -1249,12 +1371,14 @@ function App() {
             canvas={canvasState.canvas}
             zoom={canvasState.zoom}
             editorMode={editorMode}
+            mockup={activeCanvasMockup}
             showSafeArea={safeAreaVisible}
             showTrimArea={trimAreaVisible}
             fitToScreenRequest={fitToScreenRequest}
             canvasDimensions={canvasDimensions}
             onZoomChange={(zoom: number) => setCanvasState(prev => ({ ...prev, zoom }))}
             onCanvasDimensionsChange={updateCanvasDimensionsFromCanvas}
+            onMockupChange={updateActiveCanvasMockup}
           />
           
           <BottomToolbar 
@@ -1367,6 +1491,8 @@ function App() {
             editorMode={editorMode}
             updateQRCodeColors={updateQRCodeColors}
             onLockStateChange={() => persistActiveCanvas()}
+            mockup={activeCanvasMockup}
+            onMockupChange={updateActiveCanvasMockup}
             onObjectUpdate={updateCanvasObjects}
             alignmentGuides={alignmentGuides}
             className="w-80"
@@ -1378,7 +1504,7 @@ function App() {
         <div className="xl:hidden fixed inset-0 z-40 pointer-events-none">
           <div
             ref={floatingPanelRef}
-            className={`pointer-events-auto border border-gray-200 backdrop-blur-sm shadow-2xl overflow-hidden transition-opacity duration-150 ${isMobilePanelFloating ? 'absolute rounded-xl max-h-[62vh]' : 'absolute inset-x-0 bottom-0 mx-2 mb-2 rounded-t-2xl max-h-[52vh]'} ${isMobilePanelInteracting ? 'bg-white/80 opacity-85' : 'bg-white/95 opacity-100'}`}
+            className={`pointer-events-auto border border-gray-200 backdrop-blur-sm shadow-2xl overflow-hidden transition-opacity duration-150 ${isMobilePanelFloating ? `absolute rounded-xl max-h-[62vh] ${isDraggingMobilePanel ? '' : 'transition-[left,top] duration-200 ease-out'}` : 'absolute inset-x-0 bottom-0 mx-2 mb-2 rounded-t-2xl max-h-[52vh]'} ${isMobilePanelInteracting ? 'bg-white/80 opacity-85' : 'bg-white/95 opacity-100'}`}
             style={isMobilePanelFloating ? {
               left: `${mobilePanelPosition.x}px`,
               top: `${mobilePanelPosition.y}px`,
@@ -1395,11 +1521,13 @@ function App() {
           >
             <div
               className={`flex items-center justify-between px-4 py-3 border-b border-gray-200 ${isMobilePanelFloating ? 'cursor-move' : ''}`}
+              style={isMobilePanelFloating ? { touchAction: 'none', userSelect: 'none' } : undefined}
               onPointerDown={(event) => {
                 if (!isMobilePanelFloating) return;
                 const target = event.target as HTMLElement;
                 if (target.closest('button, input, select, textarea')) return;
 
+                event.preventDefault();
                 mobilePanelDragOffsetRef.current = {
                   x: event.clientX - mobilePanelPosition.x,
                   y: event.clientY - mobilePanelPosition.y,
@@ -1465,6 +1593,8 @@ function App() {
                   editorMode={editorMode}
                   updateQRCodeColors={updateQRCodeColors}
                   onLockStateChange={() => persistActiveCanvas()}
+                  mockup={activeCanvasMockup}
+                  onMockupChange={updateActiveCanvasMockup}
                   onObjectUpdate={updateCanvasObjects}
                   alignmentGuides={alignmentGuides}
                   className="w-full"

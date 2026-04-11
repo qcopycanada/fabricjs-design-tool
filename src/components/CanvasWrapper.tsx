@@ -1,20 +1,35 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Canvas } from 'fabric';
 
+interface CanvasMockup {
+  url: string;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  opacity: number;
+  visible: boolean;
+  lockedInDev: boolean;
+  imageWidth: number;
+  imageHeight: number;
+}
+
 interface CanvasWrapperProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   canvas?: Canvas | null;
   zoom: number;
   editorMode?: 'dev' | 'prod';
+  mockup?: CanvasMockup;
   showSafeArea?: boolean;
   showTrimArea?: boolean;
   fitToScreenRequest?: number;
   canvasDimensions?: { width: number; height: number };
   onZoomChange?: (zoom: number) => void;
   onCanvasDimensionsChange?: (dimensions: { width: number; height: number }) => void;
+  onMockupChange?: (mockup?: CanvasMockup) => void;
 }
 
-const CANVAS_DPI = 300;
+const CANVAS_DPI = 150;
 const SAFE_AREA_INSET_INCHES = 0.25;
 const TRIM_AREA_INSET_INCHES = 0.125;
 const BASE_CONTROL_CORNER_SIZE = 10;
@@ -30,12 +45,14 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   canvas,
   zoom,
   editorMode = 'dev',
+  mockup,
   showSafeArea = true,
   showTrimArea = true,
   fitToScreenRequest = 0,
   canvasDimensions = { width: 800, height: 600 },
   onZoomChange,
-  onCanvasDimensionsChange
+  onCanvasDimensionsChange,
+  onMockupChange
 }) => {
   const [viewportPosition, setViewportPosition] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -50,6 +67,73 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   const pinchStartDistanceRef = useRef<number | null>(null);
   const pinchStartZoomRef = useRef<number>(zoom);
   const previousDimensionsRef = useRef(canvasDimensions);
+  const mockupInteractionRef = useRef<{ mode: 'drag' | 'scale'; startX: number; startY: number; startMockup: CanvasMockup } | null>(null);
+  const [isMockupSelected, setIsMockupSelected] = useState(false);
+
+  const hasVisibleMockup = Boolean(mockup?.url && mockup.visible);
+  const canEditMockup = editorMode === 'dev' && Boolean(mockup) && !mockup?.lockedInDev;
+
+  useEffect(() => {
+    if (!mockup?.url) {
+      setIsMockupSelected(false);
+    }
+  }, [mockup?.url]);
+
+  useEffect(() => {
+    if (!mockupInteractionRef.current) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!mockup || !canEditMockup || !onMockupChange) return;
+
+      const state = mockupInteractionRef.current;
+      if (!state) return;
+
+      const deltaX = (event.clientX - state.startX) / Math.max(zoom, 0.1);
+      const deltaY = (event.clientY - state.startY) / Math.max(zoom, 0.1);
+
+      if (state.mode === 'drag') {
+        onMockupChange({
+          ...state.startMockup,
+          x: state.startMockup.x + deltaX,
+          y: state.startMockup.y + deltaY,
+        });
+        return;
+      }
+
+      const deltaScale = (deltaX + deltaY) / 320;
+      onMockupChange({
+        ...state.startMockup,
+        scale: Math.max(0.05, state.startMockup.scale * (1 + deltaScale)),
+      });
+    };
+
+    const handlePointerUp = () => {
+      mockupInteractionRef.current = null;
+      document.body.style.cursor = 'default';
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [canEditMockup, mockup, onMockupChange, zoom]);
+
+  const startMockupInteraction = (mode: 'drag' | 'scale', event: React.PointerEvent) => {
+    if (!mockup || !canEditMockup) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setIsMockupSelected(true);
+    mockupInteractionRef.current = {
+      mode,
+      startX: event.clientX,
+      startY: event.clientY,
+      startMockup: { ...mockup },
+    };
+    document.body.style.cursor = mode === 'drag' ? 'grabbing' : 'nwse-resize';
+  };
 
   // Handle viewport panning and zooming (like Adobe Illustrator)
   useEffect(() => {
@@ -470,23 +554,85 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
           marginTop: `${-canvasDimensions.height / 2}px`
         }}
       >
+        {mockup?.url && mockup.visible && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              overflow: 'visible',
+              zIndex: 0,
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              onPointerDown={(event) => startMockupInteraction('drag', event)}
+              style={{
+                position: 'absolute',
+                left: `${mockup.x}px`,
+                top: `${mockup.y}px`,
+                width: `${mockup.imageWidth}px`,
+                height: `${mockup.imageHeight}px`,
+                transform: `translate(-50%, -50%) scale(${mockup.scale}) rotate(${mockup.rotation}deg)`,
+                transformOrigin: 'center center',
+                opacity: mockup.opacity,
+                pointerEvents: canEditMockup ? 'auto' : 'none',
+                cursor: canEditMockup ? 'grab' : 'default',
+                border: isMockupSelected && canEditMockup ? '1px dashed rgba(6, 182, 212, 0.85)' : 'none',
+              }}
+            >
+              <img
+                src={mockup.url}
+                alt="Canvas mockup backdrop"
+                draggable={false}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  userSelect: 'none',
+                  pointerEvents: 'none',
+                }}
+              />
+              {isMockupSelected && canEditMockup && (
+                <div
+                  onPointerDown={(event) => startMockupInteraction('scale', event)}
+                  style={{
+                    position: 'absolute',
+                    right: '-6px',
+                    bottom: '-6px',
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '9999px',
+                    background: '#06b6d4',
+                    border: '2px solid #ffffff',
+                    cursor: 'nwse-resize',
+                    pointerEvents: 'auto',
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Artboard shadow */}
-        <div 
-          className="artboard-shadow absolute bg-black opacity-20 rounded-lg"
-          style={{
-            width: `${canvasDimensions.width}px`,
-            height: `${canvasDimensions.height}px`,
-            transform: 'translate(4px, 4px)',
-            zIndex: 1
-          }}
-        />
+        {!hasVisibleMockup && (
+          <div 
+            className="artboard-shadow absolute bg-black opacity-20 rounded-lg"
+            style={{
+              width: `${canvasDimensions.width}px`,
+              height: `${canvasDimensions.height}px`,
+              transform: 'translate(4px, 4px)',
+              zIndex: 1
+            }}
+          />
+        )}
         
         {/* Main artboard */}
         <div 
-          className="artboard bg-white relative rounded-lg overflow-hidden"
+          className="artboard relative rounded-lg overflow-hidden"
           style={{
             width: `${canvasDimensions.width}px`,
             height: `${canvasDimensions.height}px`,
+            backgroundColor: hasVisibleMockup ? 'transparent' : '#ffffff',
             zIndex: 2,
             boxShadow: '0 0 0 1px rgba(0,0,0,0.1)'
           }}
