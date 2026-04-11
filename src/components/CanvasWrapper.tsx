@@ -71,12 +71,42 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   const pinchStartDistanceRef = useRef<number | null>(null);
   const pinchStartZoomRef = useRef<number>(zoom);
   const previousDimensionsRef = useRef(canvasDimensions);
-  const mockupInteractionRef = useRef<{ mode: 'drag' | 'scale'; startX: number; startY: number; startMockup: CanvasMockup } | null>(null);
+  const mockupInteractionRef = useRef<{
+    mode: 'drag' | 'scale';
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startMockup: CanvasMockup;
+    baseDiagonal: number;
+    startScaledDiagonal: number;
+  } | null>(null);
+  const rafHandleRef = useRef<number | null>(null);
+  const pendingPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const latestMockupRef = useRef<CanvasMockup | undefined>(mockup);
+  const latestCanEditMockupRef = useRef<boolean>(false);
+  const latestZoomRef = useRef<number>(zoom);
+  const latestOnMockupChangeRef = useRef<typeof onMockupChange>(onMockupChange);
   const initialMockupFitKeyRef = useRef<string | null>(null);
   const [isMockupSelected, setIsMockupSelected] = useState(false);
 
   const hasVisibleMockup = Boolean(mockup?.url && mockup.visible);
   const canEditMockup = editorMode === 'dev' && Boolean(mockup) && !mockup?.lockedInDev;
+
+  useEffect(() => {
+    latestMockupRef.current = mockup;
+  }, [mockup]);
+
+  useEffect(() => {
+    latestCanEditMockupRef.current = canEditMockup;
+  }, [canEditMockup]);
+
+  useEffect(() => {
+    latestZoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    latestOnMockupChangeRef.current = onMockupChange;
+  }, [onMockupChange]);
 
   useEffect(() => {
     if (!mockup?.url) {
@@ -85,19 +115,22 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   }, [mockup?.url]);
 
   useEffect(() => {
-    if (!mockupInteractionRef.current) return;
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!mockup || !canEditMockup || !onMockupChange) return;
+    const flushPointerUpdate = () => {
+      rafHandleRef.current = null;
 
       const state = mockupInteractionRef.current;
-      if (!state) return;
+      const pointer = pendingPointerPositionRef.current;
+      const onMockupChangeHandler = latestOnMockupChangeRef.current;
+      if (!state || !pointer || !onMockupChangeHandler) {
+        return;
+      }
 
-      const deltaX = (event.clientX - state.startX) / Math.max(zoom, 0.1);
-      const deltaY = (event.clientY - state.startY) / Math.max(zoom, 0.1);
+      const zoomValue = Math.max(latestZoomRef.current, 0.1);
+      const deltaX = (pointer.x - state.startX) / zoomValue;
+      const deltaY = (pointer.y - state.startY) / zoomValue;
 
       if (state.mode === 'drag') {
-        onMockupChange({
+        onMockupChangeHandler({
           ...state.startMockup,
           x: state.startMockup.x + deltaX,
           y: state.startMockup.y + deltaY,
@@ -105,38 +138,79 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
         return;
       }
 
-      const deltaScale = (deltaX + deltaY) / 320;
-      onMockupChange({
+      const diagonalDelta = Math.max(-state.startScaledDiagonal + 12, (deltaX + deltaY));
+      const nextScaledDiagonal = Math.max(12, state.startScaledDiagonal + diagonalDelta);
+      const nextScale = Math.max(0.05, nextScaledDiagonal / state.baseDiagonal);
+      onMockupChangeHandler({
         ...state.startMockup,
-        scale: Math.max(0.05, state.startMockup.scale * (1 + deltaScale)),
+        scale: nextScale,
       });
     };
 
-    const handlePointerUp = () => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const state = mockupInteractionRef.current;
+      if (!state) return;
+      if (event.pointerId !== state.pointerId) return;
+      if (!latestCanEditMockupRef.current || !latestMockupRef.current) return;
+
+      pendingPointerPositionRef.current = { x: event.clientX, y: event.clientY };
+      if (rafHandleRef.current === null) {
+        rafHandleRef.current = window.requestAnimationFrame(flushPointerUpdate);
+      }
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      const state = mockupInteractionRef.current;
+      if (!state || event.pointerId !== state.pointerId) return;
+
       mockupInteractionRef.current = null;
+      pendingPointerPositionRef.current = null;
+      if (rafHandleRef.current !== null) {
+        window.cancelAnimationFrame(rafHandleRef.current);
+        rafHandleRef.current = null;
+      }
       document.body.style.cursor = 'default';
     };
 
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      if (rafHandleRef.current !== null) {
+        window.cancelAnimationFrame(rafHandleRef.current);
+        rafHandleRef.current = null;
+      }
     };
-  }, [canEditMockup, mockup, onMockupChange, zoom]);
+  }, []);
 
   const startMockupInteraction = (mode: 'drag' | 'scale', event: React.PointerEvent) => {
     if (!mockup || !canEditMockup) return;
     event.preventDefault();
     event.stopPropagation();
+
+    const baseDiagonal = Math.max(1, Math.hypot(mockup.imageWidth, mockup.imageHeight));
+    const startScaledDiagonal = baseDiagonal * Math.max(0.05, mockup.scale);
+
     setIsMockupSelected(true);
     mockupInteractionRef.current = {
       mode,
+      pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       startMockup: { ...mockup },
+      baseDiagonal,
+      startScaledDiagonal,
     };
+    pendingPointerPositionRef.current = { x: event.clientX, y: event.clientY };
+
+    if (event.currentTarget && 'setPointerCapture' in event.currentTarget) {
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    }
+
     document.body.style.cursor = mode === 'drag' ? 'grabbing' : 'nwse-resize';
   };
 
