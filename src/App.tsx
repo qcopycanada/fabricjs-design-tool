@@ -248,6 +248,7 @@ function App() {
   const [safeAreaVisible, setSafeAreaVisible] = useState<boolean>(true);
   const [trimAreaVisible, setTrimAreaVisible] = useState<boolean>(true);
   const [fitToScreenRequest, setFitToScreenRequest] = useState(0);
+  const [mockupFitRequest, setMockupFitRequest] = useState(0);
   const [isQRCodeDialogOpen, setIsQRCodeDialogOpen] = useState<boolean>(false);
   const [isKeyboardShortcutsModalOpen, setIsKeyboardShortcutsModalOpen] = useState<boolean>(false);
   const [mobilePanel, setMobilePanel] = useState<'none' | 'layers' | 'properties' | 'canvases'>('none');
@@ -545,6 +546,12 @@ function App() {
     canvas.renderAll();
     setCanvasState(prev => ({ ...prev, selectedObject: null }));
     updateCanvasObjects();
+
+    if (target.mockup?.url && target.mockup.visible) {
+      setMockupFitRequest((prev) => prev + 1);
+    } else {
+      setFitToScreenRequest((prev) => prev + 1);
+    }
   }, [applyLockStatesToCurrentCanvas, canvasState.canvas, setCanvasState, updateCanvasObjects]);
 
   const updateActiveCanvasMockup = useCallback((nextMockup?: CanvasMockup) => {
@@ -1369,12 +1376,14 @@ function App() {
           <CanvasWrapper 
             canvasRef={canvasRef}
             canvas={canvasState.canvas}
+            canvasId={activeCanvasId}
             zoom={canvasState.zoom}
             editorMode={editorMode}
             mockup={activeCanvasMockup}
             showSafeArea={safeAreaVisible}
             showTrimArea={trimAreaVisible}
             fitToScreenRequest={fitToScreenRequest}
+            mockupFitRequest={mockupFitRequest}
             canvasDimensions={canvasDimensions}
             onZoomChange={(zoom: number) => setCanvasState(prev => ({ ...prev, zoom }))}
             onCanvasDimensionsChange={updateCanvasDimensionsFromCanvas}
