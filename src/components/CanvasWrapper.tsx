@@ -17,12 +17,14 @@ interface CanvasMockup {
 interface CanvasWrapperProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   canvas?: Canvas | null;
+  canvasId?: string;
   zoom: number;
   editorMode?: 'dev' | 'prod';
   mockup?: CanvasMockup;
   showSafeArea?: boolean;
   showTrimArea?: boolean;
   fitToScreenRequest?: number;
+  mockupFitRequest?: number;
   canvasDimensions?: { width: number; height: number };
   onZoomChange?: (zoom: number) => void;
   onCanvasDimensionsChange?: (dimensions: { width: number; height: number }) => void;
@@ -43,12 +45,14 @@ const CONTROL_SELECTION_FILL = 'rgba(6, 182, 212, 0.08)';
 const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   canvasRef,
   canvas,
+  canvasId,
   zoom,
   editorMode = 'dev',
   mockup,
   showSafeArea = true,
   showTrimArea = true,
   fitToScreenRequest = 0,
+  mockupFitRequest = 0,
   canvasDimensions = { width: 800, height: 600 },
   onZoomChange,
   onCanvasDimensionsChange,
@@ -68,6 +72,7 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   const pinchStartZoomRef = useRef<number>(zoom);
   const previousDimensionsRef = useRef(canvasDimensions);
   const mockupInteractionRef = useRef<{ mode: 'drag' | 'scale'; startX: number; startY: number; startMockup: CanvasMockup } | null>(null);
+  const initialMockupFitKeyRef = useRef<string | null>(null);
   const [isMockupSelected, setIsMockupSelected] = useState(false);
 
   const hasVisibleMockup = Boolean(mockup?.url && mockup.visible);
@@ -427,6 +432,41 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
     return Math.max(0.1, Math.min(scaleX, scaleY, 1));
   };
 
+  const getCompositionBounds = () => {
+    const artboardBounds = {
+      left: 0,
+      top: 0,
+      right: canvasDimensions.width,
+      bottom: canvasDimensions.height,
+    };
+
+    if (!hasVisibleMockup || !mockup) {
+      return artboardBounds;
+    }
+
+    const radians = (mockup.rotation * Math.PI) / 180;
+    const halfWidth = (mockup.imageWidth * mockup.scale) / 2;
+    const halfHeight = (mockup.imageHeight * mockup.scale) / 2;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
+    const rotatedHalfWidth = cos * halfWidth + sin * halfHeight;
+    const rotatedHalfHeight = sin * halfWidth + cos * halfHeight;
+
+    const mockupBounds = {
+      left: mockup.x - rotatedHalfWidth,
+      top: mockup.y - rotatedHalfHeight,
+      right: mockup.x + rotatedHalfWidth,
+      bottom: mockup.y + rotatedHalfHeight,
+    };
+
+    return {
+      left: Math.min(artboardBounds.left, mockupBounds.left),
+      top: Math.min(artboardBounds.top, mockupBounds.top),
+      right: Math.max(artboardBounds.right, mockupBounds.right),
+      bottom: Math.max(artboardBounds.bottom, mockupBounds.bottom),
+    };
+  };
+
   const zoomToFit = () => {
     const newZoom = calculateFitZoom(canvasDimensions.width, canvasDimensions.height);
     if (!newZoom) return;
@@ -457,6 +497,39 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
       setViewportPosition({ x: 0, y: 0 });
     }
   }, [canvasDimensions, onZoomChange]);
+
+  useEffect(() => {
+    if (!hasVisibleMockup || !mockup) {
+      initialMockupFitKeyRef.current = null;
+      return;
+    }
+
+    const fitKey = `${canvasId || 'default'}|${mockup.url}|${mockupFitRequest}`;
+    if (initialMockupFitKeyRef.current === fitKey) {
+      return;
+    }
+
+    const bounds = getCompositionBounds();
+    const boundsWidth = Math.max(1, bounds.right - bounds.left);
+    const boundsHeight = Math.max(1, bounds.bottom - bounds.top);
+    const fitZoom = calculateFitZoom(boundsWidth, boundsHeight);
+
+    if (fitZoom === null) {
+      return;
+    }
+
+    const contentCenterX = (bounds.left + bounds.right) / 2;
+    const contentCenterY = (bounds.top + bounds.bottom) / 2;
+    const artboardCenterX = canvasDimensions.width / 2;
+    const artboardCenterY = canvasDimensions.height / 2;
+
+    onZoomChange?.(fitZoom);
+    setViewportPosition({
+      x: -(contentCenterX - artboardCenterX) * fitZoom,
+      y: -(contentCenterY - artboardCenterY) * fitZoom,
+    });
+    initialMockupFitKeyRef.current = fitKey;
+  }, [canvasDimensions.height, canvasDimensions.width, canvasId, hasVisibleMockup, mockup, mockupFitRequest, onZoomChange]);
 
   useEffect(() => {
     if (!canvas) return;
