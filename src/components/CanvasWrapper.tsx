@@ -40,7 +40,7 @@ const BASE_CONTROL_PADDING = 6;
 const BASE_BORDER_SCALE_FACTOR = 1.6;
 const CONTROL_ACCENT_COLOR = '#06b6d4';
 const CONTROL_ACCENT_BORDER = 'rgba(8, 145, 178, 0.95)';
-const CONTROL_SELECTION_FILL = 'rgba(6, 182, 212, 0.08)';
+const CONTROL_SELECTION_FILL = 'rgba(6, 181, 212, 0.85)';
 
 const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   canvasRef,
@@ -59,6 +59,12 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   onMockupChange
 }) => {
   const [viewportPosition, setViewportPosition] = useState({ x: 0, y: 0 });
+  const [selectionOverlay, setSelectionOverlay] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<string>('');
@@ -649,12 +655,57 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
       }
     }
 
-    canvas.selectionLineWidth = Math.min(8, Math.max(1.5, 2 / zoomSafe));
+    canvas.selectionLineWidth = Math.min(10, Math.max(2.5, 3 / zoomSafe));
     canvas.selectionColor = CONTROL_SELECTION_FILL;
     canvas.selectionBorderColor = CONTROL_ACCENT_BORDER;
-    canvas.selectionDashArray = [4 / zoomSafe, 3 / zoomSafe];
+    canvas.selectionDashArray = [6 / zoomSafe, 3 / zoomSafe];
     canvas.requestRenderAll();
   }, [canvas, zoom]);
+
+  useEffect(() => {
+    if (!canvas) return;
+
+    let dragStart: { x: number; y: number } | null = null;
+
+    const handleMouseDown = (event: any) => {
+      if (!canvas.selection) return;
+      if (event?.target) return;
+      const pointer = canvas.getPointer(event.e);
+      dragStart = { x: pointer.x, y: pointer.y };
+      setSelectionOverlay({
+        left: pointer.x,
+        top: pointer.y,
+        width: 0,
+        height: 0,
+      });
+    };
+
+    const handleMouseMove = (event: any) => {
+      if (!dragStart) return;
+      const pointer = canvas.getPointer(event.e);
+      const left = Math.min(dragStart.x, pointer.x);
+      const top = Math.min(dragStart.y, pointer.y);
+      const width = Math.abs(pointer.x - dragStart.x);
+      const height = Math.abs(pointer.y - dragStart.y);
+
+      setSelectionOverlay({ left, top, width, height });
+    };
+
+    const clearSelectionOverlay = () => {
+      dragStart = null;
+      setSelectionOverlay(null);
+    };
+
+    canvas.on('mouse:down', handleMouseDown);
+    canvas.on('mouse:move', handleMouseMove);
+    canvas.on('mouse:up', clearSelectionOverlay);
+
+    return () => {
+      canvas.off('mouse:down', handleMouseDown);
+      canvas.off('mouse:move', handleMouseMove);
+      canvas.off('mouse:up', clearSelectionOverlay);
+    };
+  }, [canvas]);
 
   const resetZoom = () => {
     onZoomChange?.(1);
@@ -794,6 +845,23 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
               height: '100%'
             }}
           />
+
+          {selectionOverlay && (selectionOverlay.width > 0 || selectionOverlay.height > 0) && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                pointerEvents: 'none',
+                left: `${selectionOverlay.left}px`,
+                top: `${selectionOverlay.top}px`,
+                width: `${selectionOverlay.width}px`,
+                height: `${selectionOverlay.height}px`,
+                border: '1.5px dashed rgba(8, 145, 178, 0.95)',
+                backgroundColor: 'rgba(6, 182, 212, 0.24)',
+                zIndex: 7,
+              }}
+            />
+          )}
 
           {shouldRenderSafeArea && (
             <>
