@@ -279,6 +279,7 @@ export class ShapeFactory {
       fill: fillColor,
       stroke: strokeColor,
       strokeWidth,
+      strokeUniform: true,
       selectable: false,
       evented: false,
     });
@@ -290,6 +291,7 @@ export class ShapeFactory {
       elements.push(new Line([xOffset, 0, xOffset, height], {
         stroke: strokeColor,
         strokeWidth,
+        strokeUniform: true,
         selectable: false,
         evented: false,
       }));
@@ -301,6 +303,7 @@ export class ShapeFactory {
       elements.push(new Line([0, yOffset, width, yOffset], {
         stroke: strokeColor,
         strokeWidth,
+        strokeUniform: true,
         selectable: false,
         evented: false,
       }));
