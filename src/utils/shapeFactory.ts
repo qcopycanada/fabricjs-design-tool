@@ -1,7 +1,7 @@
 import { Text, Rect, Circle, Line, Polygon, Ellipse, FabricImage, Group } from 'fabric';
 import { SHAPE_DEFAULTS } from './constants';
 import { AdvancedQRCodeGenerator } from './advancedQRGenerator';
-import { SHAPE_COORDINATES, SHAPE_COLORS } from './shapeConstants';
+import { SHAPE_COORDINATES } from './shapeConstants';
 import type { 
   ShapeConfig, 
   QRCodeOptions, 
@@ -96,7 +96,7 @@ export class ShapeFactory {
       top: DEFAULT_POSITIONS.SMALL_OFFSET,
       width: DEFAULT_DIMENSIONS.RECT_WIDTH,
       height: DEFAULT_DIMENSIONS.RECT_HEIGHT,
-      fill: '#ff0000',
+      fill: '#000000',
       stroke: SHAPE_DEFAULTS.STROKE_COLOR,
       strokeWidth: SHAPE_DEFAULTS.STROKE_WIDTH,
       selectable: true,
@@ -111,7 +111,7 @@ export class ShapeFactory {
       left: DEFAULT_POSITIONS.SMALL_OFFSET,
       top: DEFAULT_POSITIONS.SMALL_OFFSET,
       radius: DEFAULT_DIMENSIONS.CIRCLE_RADIUS,
-      fill: '#0000ff',
+      fill: '#000000',
       stroke: SHAPE_DEFAULTS.STROKE_COLOR,
       strokeWidth: SHAPE_DEFAULTS.STROKE_WIDTH,
       selectable: true,
@@ -138,7 +138,7 @@ export class ShapeFactory {
       top: DEFAULT_POSITIONS.MEDIUM_OFFSET,
       rx: DEFAULT_DIMENSIONS.ELLIPSE_RX,
       ry: DEFAULT_DIMENSIONS.ELLIPSE_RY,
-      fill: SHAPE_COLORS.ellipse,
+      fill: '#000000',
       selectable: true,
       evented: true,
       ...config
@@ -157,7 +157,7 @@ export class ShapeFactory {
       height: DEFAULT_DIMENSIONS.ROUNDED_RECT_HEIGHT,
       rx: DEFAULT_DIMENSIONS.ROUNDED_RECT_RADIUS,
       ry: DEFAULT_DIMENSIONS.ROUNDED_RECT_RADIUS,
-      fill: SHAPE_COLORS.roundedRectangle,
+      fill: '#000000',
       selectable: true,
       evented: true,
       ...config
@@ -176,7 +176,7 @@ export class ShapeFactory {
     const defaultConfig: ShapeConfig = {
       left: DEFAULT_POSITIONS.POLYGON_LEFT,
       top: DEFAULT_POSITIONS.POLYGON_TOP,
-      fill: SHAPE_COLORS[shapeType] || '#333333',
+      fill: '#000000',
       selectable: true,
       evented: true,
       ...config

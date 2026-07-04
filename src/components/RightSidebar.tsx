@@ -394,6 +394,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   const [backgroundGradientStartColor, setBackgroundGradientStartColor] = useState('#3b82f6');
   const [backgroundGradientEndColor, setBackgroundGradientEndColor] = useState('#1d4ed8');
   const [recentBackgroundColors, setRecentBackgroundColors] = useState<string[]>([]);
+  const [customFontFamilies, setCustomFontFamilies] = useState<string[]>([]);
   const [mockupUrl, setMockupUrl] = useState('');
   const [mockupUrlError, setMockupUrlError] = useState<string | null>(null);
   const [qrContentType, setQrContentType] = useState<keyof QRCodeContent>('URL');
@@ -480,6 +481,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
     () => tableRowHeights.reduce((sum, value) => sum + value, 0),
     [tableRowHeights],
   );
+  const selectedTableFillIsTransparent = selectedTableFillColor.trim().toLowerCase() === 'transparent';
+  const selectedTableBorderIsTransparent = selectedTableStrokeColor.trim().toLowerCase() === 'transparent';
 
   const inchesFromPixels = (pixels: number) => Number((pixels / CANVAS_DPI).toFixed(2));
   const pixelsFromInches = (inches: number) => Math.max(1, Math.round(inches * CANVAS_DPI));
@@ -493,6 +496,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   
   // Background image upload ref
   const backgroundImageInputRef = useRef<HTMLInputElement>(null);
+  const customerFontInputRef = useRef<HTMLInputElement>(null);
   
   // Force re-render when selectedObject changes
   const [, forceUpdate] = useState({});
@@ -959,6 +963,57 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
     }
   };
 
+  const handleCustomerFontUploadRequest = () => {
+    customerFontInputRef.current?.click();
+  };
+
+  const handleCustomerFontUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      if (typeof FontFace === 'undefined' || !(document as any).fonts) {
+        event.target.value = '';
+        return;
+      }
+
+      const fileBuffer = await file.arrayBuffer();
+      const rawFamilyName = file.name.replace(/\.[^/.]+$/, '').trim() || 'Customer Font';
+      const baseFamilyName = rawFamilyName.replace(/\s+/g, ' ').slice(0, 48);
+      const familyName = customFontFamilies.includes(baseFamilyName)
+        ? `${baseFamilyName} ${Date.now().toString().slice(-4)}`
+        : baseFamilyName;
+
+      const fontFace = new FontFace(familyName, new Uint8Array(fileBuffer));
+      const loadedFontFace = await fontFace.load();
+      (document as any).fonts.add(loadedFontFace);
+
+      setCustomFontFamilies((prev) => (prev.includes(familyName) ? prev : [...prev, familyName]));
+
+      if (selectedObject?.type === 'text') {
+        updateObjectProperty('fontFamily', familyName);
+      }
+    } catch {
+      // Keep existing behavior if font loading fails.
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const applyTextCaseTransform = (transform: 'upper' | 'lower') => {
+    if (!selectedObject || selectedObject.type !== 'text') return;
+
+    const currentText = String(selectedObject.text || '');
+    const nextText = transform === 'upper'
+      ? currentText.toUpperCase()
+      : currentText.toLowerCase();
+
+    updateObjectProperty('text', nextText);
+  };
+
   const updateObjectLockState = (updates: Record<string, boolean>) => {
     if (!selectedObject) return;
 
@@ -1383,6 +1438,15 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
         type="file"
         accept="image/*"
         onChange={handleBackgroundImageChange}
+        className="hidden"
+      />
+
+      {/* Hidden file input for customer font upload */}
+      <input
+        ref={customerFontInputRef}
+        type="file"
+        accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2"
+        onChange={handleCustomerFontUpload}
         className="hidden"
       />
       
@@ -1974,8 +2038,9 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                               <div className="flex items-center space-x-2">
                                 <input
                                   type="color"
-                                  value={selectedTableFillColor}
+                                  value={selectedTableFillIsTransparent ? '#ffffff' : selectedTableFillColor}
                                   onChange={(e) => setSelectedTableFillColor(e.target.value)}
+                                  disabled={selectedTableFillIsTransparent}
                                   className="w-8 h-8 border-2 border-gray-300 rounded cursor-pointer"
                                 />
                                 <input
@@ -1985,6 +2050,21 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                                   className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
                                 />
                               </div>
+                              <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedTableFillIsTransparent}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedTableFillColor('transparent');
+                                      return;
+                                    }
+                                    setSelectedTableFillColor(ShapeFactory.DEFAULT_TABLE_FILL_COLOR);
+                                  }}
+                                  className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                                />
+                                <span>Transparent Fill</span>
+                              </label>
                             </div>
 
                             <div>
@@ -2337,6 +2417,15 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Font Family</label>
+                      <div className="mb-2">
+                        <button
+                          onClick={handleCustomerFontUploadRequest}
+                          className="flex items-center justify-center space-x-2 w-full px-2 py-1.5 text-xs text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+                        >
+                          <Upload size={14} />
+                          <span>Upload Custom Font</span>
+                        </button>
+                      </div>
                       <select
                         value={selectedObject.fontFamily || 'Arial'}
                         onChange={(e) => updateObjectProperty('fontFamily', e.target.value)}
@@ -2349,6 +2438,11 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                         <option value="Verdana">Verdana</option>
                         <option value="Courier New">Courier New</option>
                         <option value="Impact">Impact</option>
+                        {customFontFamilies.map((fontFamily) => (
+                          <option key={`customer-font-${fontFamily}`} value={fontFamily}>
+                            {fontFamily}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -2392,7 +2486,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                     {renderGradientControls('text')}
                     <div>
                       <label className="block text-xs text-gray-500 mb-2">Text Style</label>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => {
                             updateObjectProperty('fontWeight', selectedObject.fontWeight === 'bold' ? 'normal' : 'bold');
@@ -2428,6 +2522,24 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                           }`}
                         >
                           <u>U</u>
+                        </button>
+                        <button
+                          onClick={() => {
+                            applyTextCaseTransform('upper');
+                          }}
+                          className="px-2 py-1 text-xs border rounded text-gray-700 border-gray-300 hover:bg-gray-50 flex items-center gap-1"
+                        >
+                          <MoveUp size={12} />
+                          <span>Uppercase</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            applyTextCaseTransform('lower');
+                          }}
+                          className="px-2 py-1 text-xs border rounded text-gray-700 border-gray-300 hover:bg-gray-50 flex items-center gap-1"
+                        >
+                          <MoveDown size={12} />
+                          <span>Lowercase</span>
                         </button>
                       </div>
                     </div>
@@ -3202,8 +3314,9 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                       <div className="flex items-center space-x-2">
                         <input
                           type="color"
-                          value={selectedTableFillColor}
+                          value={selectedTableFillIsTransparent ? '#ffffff' : selectedTableFillColor}
                           onChange={(e) => setSelectedTableFillColor(e.target.value)}
+                          disabled={selectedTableFillIsTransparent}
                           className="w-8 h-8 border-2 border-gray-300 rounded cursor-pointer"
                         />
                         <input
@@ -3214,14 +3327,30 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                           placeholder="#ffffff"
                         />
                       </div>
+                      <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                        <input
+                          type="checkbox"
+                          checked={selectedTableFillIsTransparent}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTableFillColor('transparent');
+                              return;
+                            }
+                            setSelectedTableFillColor(ShapeFactory.DEFAULT_TABLE_FILL_COLOR);
+                          }}
+                          className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                        />
+                        <span>Transparent Fill</span>
+                      </label>
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Border Color</label>
                       <div className="flex items-center space-x-2">
                         <input
                           type="color"
-                          value={selectedTableStrokeColor}
+                          value={selectedTableBorderIsTransparent ? '#111827' : selectedTableStrokeColor}
                           onChange={(e) => setSelectedTableStrokeColor(e.target.value)}
+                          disabled={selectedTableBorderIsTransparent}
                           className="w-8 h-8 border-2 border-gray-300 rounded cursor-pointer"
                         />
                         <input
@@ -3232,6 +3361,21 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                           placeholder="#111827"
                         />
                       </div>
+                      <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                        <input
+                          type="checkbox"
+                          checked={selectedTableBorderIsTransparent}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTableStrokeColor('transparent');
+                              return;
+                            }
+                            setSelectedTableStrokeColor(ShapeFactory.DEFAULT_TABLE_STROKE_COLOR);
+                          }}
+                          className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                        />
+                        <span>Transparent Border</span>
+                      </label>
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Border Width</label>

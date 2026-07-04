@@ -875,28 +875,14 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
           </div>
         )}
 
-        {/* Artboard shadow */}
-        {!hasVisibleMockup && (
-          <div 
-            className="artboard-shadow absolute bg-black opacity-20 rounded-lg"
-            style={{
-              width: `${canvasDimensions.width}px`,
-              height: `${canvasDimensions.height}px`,
-              transform: 'translate(4px, 4px)',
-              zIndex: 1
-            }}
-          />
-        )}
-        
         {/* Main artboard */}
         <div 
-          className="artboard relative rounded-lg overflow-hidden"
+          className="artboard relative overflow-hidden"
           style={{
             width: `${canvasDimensions.width}px`,
             height: `${canvasDimensions.height}px`,
             backgroundColor: hasVisibleMockup ? 'transparent' : '#ffffff',
-            zIndex: 2,
-            boxShadow: '0 0 0 1px rgba(0,0,0,0.1)'
+            zIndex: 2
           }}
         >
           <canvas
