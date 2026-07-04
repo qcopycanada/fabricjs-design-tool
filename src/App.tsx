@@ -1762,7 +1762,7 @@ function App() {
           />
 
           {canvasDocuments.length > 0 && (
-            <div className="absolute top-4 right-4 z-20 hidden xl:block w-44 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-xl shadow-lg p-2">
+            <div className="absolute top-4 right-4 z-20 hidden xl:block w-44 bg-white/95 backdrop-blur-sm border border-gray-200 shadow-lg p-2">
               <div className="px-1 pb-2 text-xs font-medium text-gray-500">Canvases</div>
               <div className="max-h-[58vh] overflow-y-auto space-y-2">
                 {canvasDocuments.map((doc) => {
@@ -1772,7 +1772,7 @@ function App() {
                   return (
                     <div
                       key={doc.id}
-                      className={`w-full rounded-lg border p-1.5 transition-colors ${
+                      className={`w-full border p-1.5 transition-colors ${
                         isActive
                           ? 'border-cyan-500 bg-cyan-50'
                           : 'border-gray-200 bg-white hover:bg-gray-50'
@@ -1784,7 +1784,7 @@ function App() {
                         }}
                         className="w-full text-left"
                       >
-                        <div className="w-full aspect-[3/2] overflow-hidden rounded border border-gray-200 bg-gray-100 mb-1.5">
+                        <div className="w-full aspect-[3/2] overflow-hidden border border-gray-200 bg-gray-100 mb-1.5">
                           {canvasThumbnails[doc.id] ? (
                             <img
                               src={canvasThumbnails[doc.id]}

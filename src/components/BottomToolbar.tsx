@@ -91,8 +91,8 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
   };
 
   return (
-    <div className="min-h-12 bg-white border-t border-gray-200 flex items-center justify-between px-2 md:px-4 py-1 md:py-0 gap-2">
-      <div className="flex items-center space-x-2 md:space-x-3 min-w-0 overflow-x-auto">
+    <div className="min-h-12 bg-white border-t border-gray-200 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-2 md:px-4 py-1 md:py-0 gap-2">
+      <div className="flex items-center space-x-2 md:space-x-3 min-w-0 overflow-x-auto justify-self-start">
         {/* Keyboard Shortcuts Button */}
         {onShowKeyboardShortcuts && (
           <button
@@ -112,56 +112,57 @@ const BottomToolbar: React.FC<BottomToolbarProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center space-x-2 md:space-x-4 min-w-0">
-        {onToggleCanvasLayer && onToggleCanvasSwitching && (
-            <div className="flex items-center space-x-2 md:space-x-3 overflow-x-auto">
-            {onToggleSafeArea && (
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={safeAreaVisible}
-                  onChange={(e) => onToggleSafeArea(e.target.checked)}
-                  className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500 focus:ring-2"
-                  aria-label="Toggle safe area"
-                />
-                <span className="hidden sm:inline text-xs text-gray-600">Safe Area</span>
-              </label>
-            )}
-
-            {onToggleTrimArea && (
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={trimAreaVisible}
-                  onChange={(e) => onToggleTrimArea(e.target.checked)}
-                  className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500 focus:ring-2"
-                  aria-label="Toggle trim area"
-                />
-                <span className="hidden sm:inline text-xs text-gray-600">Trim Area</span>
-              </label>
-            )}
-
+      {onToggleCanvasLayer && onToggleCanvasSwitching && (
+        <div className="flex items-center space-x-2 md:space-x-3 overflow-x-auto justify-self-center">
+          {onToggleSafeArea && (
             <label className="flex items-center space-x-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={canvasSwitchingEnabled}
-                onChange={(e) => onToggleCanvasSwitching(e.target.checked)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                checked={safeAreaVisible}
+                onChange={(e) => onToggleSafeArea(e.target.checked)}
+                className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500 focus:ring-2"
+                aria-label="Toggle safe area"
               />
-              <span className="text-xs text-gray-600">Enable Layer Switch</span>
+              <span className="hidden sm:inline text-xs text-gray-600">Safe Area</span>
             </label>
+          )}
 
-            {canvasSwitchingEnabled && (
-              <button
-                onClick={onToggleCanvasLayer}
-                className={`px-3 py-1.5 text-white text-xs font-medium rounded transition-colors ${getLayerColor()}`}
-                title="Switch between front and back canvas"
-              >
-                📋 {getLayerDisplayText()}
-              </button>
-            )}
-          </div>
-        )}
+          {onToggleTrimArea && (
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={trimAreaVisible}
+                onChange={(e) => onToggleTrimArea(e.target.checked)}
+                className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500 focus:ring-2"
+                aria-label="Toggle trim area"
+              />
+              <span className="hidden sm:inline text-xs text-gray-600">Trim Area</span>
+            </label>
+          )}
+
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={canvasSwitchingEnabled}
+              onChange={(e) => onToggleCanvasSwitching(e.target.checked)}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+            />
+            <span className="text-xs text-gray-600">Enable Layer Switch</span>
+          </label>
+
+          {canvasSwitchingEnabled && (
+            <button
+              onClick={onToggleCanvasLayer}
+              className={`px-3 py-1.5 text-white text-xs font-medium rounded transition-colors ${getLayerColor()}`}
+              title="Switch between front and back canvas"
+            >
+              📋 {getLayerDisplayText()}
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center space-x-2 md:space-x-4 min-w-0 justify-self-end col-start-3">
 
         {showCanvasTabs && canvases.length > 0 && (
           <div className="hidden md:flex items-center space-x-2 min-w-0">

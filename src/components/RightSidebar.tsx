@@ -36,16 +36,14 @@ interface CanvasMockup {
 type RightSidebarTab = 'settings' | 'styles' | 'layers' | 'images' | 'shapes' | 'qrcode' | 'tables' | 'background';
 
 const BACKGROUND_PRESET_COLORS = [
-  '#ffffff',
-  '#f8fafc',
-  '#fef3c7',
-  '#e0f2fe',
-  '#ecfccb',
-  '#fae8ff',
-  '#111827',
-  '#0f766e',
-  '#1d4ed8',
-  '#b91c1c',
+  "#FFFFFF", "#BFBFBF", "#555555", "#000000",
+  "#BDEEFF", "#4DB9DD", "#20A7D8", "#1687A7",
+  "#C8F7C5", "#76D86E", "#43CF3B", "#2E8B2E",
+  "#FFF2B3", "#FFE26A", "#FFD42A", "#B59B1F",
+  "#FFD7A3", "#F9A84A", "#FF8500", "#B96500",
+  "#FFC1BC", "#F87171", "#FF3B30", "#B3261E",
+  "#E9D5FF", "#C084FC", "#9333EA", "#581C87",
+  "#FBCFE8", "#F472B6", "#EC4899", "#9D174D"
 ];
 
 interface UploadedImageItem {
@@ -3592,7 +3590,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
 
             <div>
               <label className="block text-xs text-gray-500 mb-2">Preset Colors</label>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {BACKGROUND_PRESET_COLORS.map((color) => (
                   <button
                     key={`preset-${color}`}
