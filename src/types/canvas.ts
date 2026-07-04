@@ -25,6 +25,7 @@ export type ObjectType =
   | 'rect' 
   | 'line' 
   | 'image' 
+  | 'table'
   | 'circle' 
   | 'triangle' 
   | 'pentagon' 

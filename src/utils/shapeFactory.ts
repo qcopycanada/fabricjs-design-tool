@@ -1,4 +1,4 @@
-import { Text, Rect, Circle, Line, Polygon, Ellipse, FabricImage } from 'fabric';
+import { Text, Rect, Circle, Line, Polygon, Ellipse, FabricImage, Group } from 'fabric';
 import { SHAPE_DEFAULTS } from './constants';
 import { AdvancedQRCodeGenerator } from './advancedQRGenerator';
 import { SHAPE_COORDINATES, SHAPE_COLORS } from './shapeConstants';
@@ -198,7 +198,7 @@ export class ShapeFactory {
     try {
       // Use advanced QR code generator for better styling and features
       const svgString = await AdvancedQRCodeGenerator.generateAdvancedQRCode(content, options);
-      const svgDataUrl = `data:image/svg+xml;base64,${btoa(svgString)}`;
+      const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
       
       return new Promise((resolve, reject) => {
         const img = new Image();
@@ -230,6 +230,100 @@ export class ShapeFactory {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       throw new Error(`Failed to create QR code: ${errorMessage}`);
     }
+  }
+
+  // Create table object as a grouped grid
+  static readonly DEFAULT_TABLE_FILL_COLOR = '#ffffff';
+  static readonly DEFAULT_TABLE_STROKE_COLOR = '#111827';
+  static readonly DEFAULT_TABLE_STROKE_WIDTH = 1;
+
+  static createTable(
+    rows: number,
+    columns: number,
+    columnWidths?: number[],
+    rowHeights?: number[],
+    tableStyle?: {
+      fillColor?: string;
+      strokeColor?: string;
+      strokeWidth?: number;
+    },
+    config: Partial<ShapeConfig> = {}
+  ): Group {
+    const safeRows = Math.max(1, Math.min(50, Math.floor(rows) || 1));
+    const safeColumns = Math.max(1, Math.min(50, Math.floor(columns) || 1));
+
+    const normalizedColumnWidths = Array.from({ length: safeColumns }, (_, index) => {
+      const rawWidth = columnWidths?.[index];
+      return Math.max(24, Math.floor(Number(rawWidth) || 120));
+    });
+
+    const normalizedRowHeights = Array.from({ length: safeRows }, (_, index) => {
+      const rawHeight = rowHeights?.[index];
+      return Math.max(24, Math.floor(Number(rawHeight) || 52));
+    });
+
+    const fillColor = tableStyle?.fillColor || ShapeFactory.DEFAULT_TABLE_FILL_COLOR;
+    const strokeColor = tableStyle?.strokeColor || ShapeFactory.DEFAULT_TABLE_STROKE_COLOR;
+    const strokeWidth = Math.max(0.5, Number(tableStyle?.strokeWidth) || ShapeFactory.DEFAULT_TABLE_STROKE_WIDTH);
+
+    const width = normalizedColumnWidths.reduce((sum, current) => sum + current, 0);
+    const height = normalizedRowHeights.reduce((sum, current) => sum + current, 0);
+
+    const elements = [] as Array<Rect | Line>;
+
+    const outerBorder = new Rect({
+      left: 0,
+      top: 0,
+      width,
+      height,
+      fill: fillColor,
+      stroke: strokeColor,
+      strokeWidth,
+      selectable: false,
+      evented: false,
+    });
+    elements.push(outerBorder);
+
+    let xOffset = 0;
+    for (let col = 0; col < safeColumns - 1; col += 1) {
+      xOffset += normalizedColumnWidths[col];
+      elements.push(new Line([xOffset, 0, xOffset, height], {
+        stroke: strokeColor,
+        strokeWidth,
+        selectable: false,
+        evented: false,
+      }));
+    }
+
+    let yOffset = 0;
+    for (let row = 0; row < safeRows - 1; row += 1) {
+      yOffset += normalizedRowHeights[row];
+      elements.push(new Line([0, yOffset, width, yOffset], {
+        stroke: strokeColor,
+        strokeWidth,
+        selectable: false,
+        evented: false,
+      }));
+    }
+
+    const table = new Group(elements, {
+      left: DEFAULT_POSITIONS.SMALL_OFFSET,
+      top: DEFAULT_POSITIONS.SMALL_OFFSET,
+      selectable: true,
+      evented: true,
+      ...config,
+    });
+
+    (table as any).__isTable = true;
+    (table as any).__tableRows = safeRows;
+    (table as any).__tableColumns = safeColumns;
+    (table as any).__tableColumnWidths = normalizedColumnWidths;
+    (table as any).__tableRowHeights = normalizedRowHeights;
+    (table as any).__tableFillColor = fillColor;
+    (table as any).__tableStrokeColor = strokeColor;
+    (table as any).__tableStrokeWidth = strokeWidth;
+
+    return table;
   }
 
   // Create image from file

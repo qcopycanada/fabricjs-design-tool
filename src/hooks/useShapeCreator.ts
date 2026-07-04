@@ -127,6 +127,12 @@ export const useShapeCreator = (
     addObjectToCanvas(octagon, 'octagon');
   }, [canvas, addObjectToCanvas]);
 
+  const addTable = useCallback((rows: number, columns: number, columnWidths?: number[], rowHeights?: number[]) => {
+    if (!canvas) return;
+    const table = ShapeFactory.createTable(rows, columns, columnWidths, rowHeights);
+    addObjectToCanvas(table, 'table');
+  }, [canvas, addObjectToCanvas]);
+
   const addQRCode = useCallback(async (type: string, content: string, options: QRCodeOptions = {}) => {
     if (!canvas || !content.trim()) return;
     
@@ -156,6 +162,29 @@ export const useShapeCreator = (
     input.click();
   }, [canvas, addObjectToCanvas]);
 
+  const addImageFromFile = useCallback(async (file: File) => {
+    if (!canvas || !file) return;
+
+    try {
+      const image = await ShapeFactory.createImageFromFile(file);
+
+      // Keep newly added uploaded images visible by centering them on the artboard.
+      const canvasWidth = canvas.getWidth() || 800;
+      const canvasHeight = canvas.getHeight() || 600;
+      const imageWidth = image.getScaledWidth?.() || (image.width || 0);
+      const imageHeight = image.getScaledHeight?.() || (image.height || 0);
+
+      image.set({
+        left: Math.max(20, (canvasWidth - imageWidth) / 2),
+        top: Math.max(20, (canvasHeight - imageHeight) / 2),
+      });
+
+      addObjectToCanvas(image, 'image');
+    } catch {
+      // Error adding image
+    }
+  }, [canvas, addObjectToCanvas]);
+
   return {
     addText,
     addRectangle,
@@ -177,7 +206,9 @@ export const useShapeCreator = (
     addParallelogram,
     addTrapezoid,
     addOctagonShape,
+    addTable,
     addQRCode,
     addImage,
+    addImageFromFile,
   };
 };

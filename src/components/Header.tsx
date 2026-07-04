@@ -52,6 +52,7 @@ interface HeaderProps {
   onImportJSON?: (payload: unknown) => Promise<void> | void;
   editorMode: 'dev' | 'prod';
   onEditorModeChange: (mode: 'dev' | 'prod') => void;
+  showMainTools?: boolean;
   showModeToggle?: boolean;
   showActionButtons?: boolean;
   onTestCanvas?: () => void;
@@ -118,6 +119,7 @@ const Header: React.FC<HeaderProps> = ({
   onImportJSON,
   editorMode,
   onEditorModeChange,
+  showMainTools = true,
   showModeToggle = true,
   showActionButtons = true,
   onTestCanvas,
@@ -426,47 +428,51 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           </div> */}
 
-          <div className="flex items-center space-x-1">
-            <button
-              onClick={() => {
-                onToolSelect('text');
-                onAddText();
-              }}
-              aria-label="Text"
-              className={`p-2 rounded-md ${selectedTool === 'text' ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
-            >
-              <Type size={18} />
-            </button>
+          {showMainTools && (
+            <>
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => {
+                    onToolSelect('text');
+                    onAddText();
+                  }}
+                  aria-label="Text"
+                  className={`p-2 rounded-md ${selectedTool === 'text' ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  <Type size={18} />
+                </button>
 
-            <button
-              onClick={() => {
-                onToolSelect('image');
-                onAddImage();
-              }}
-              aria-label="Image"
-              className={`p-2 rounded-md ${selectedTool === 'image' ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
-            >
-              <Image size={18} />
-            </button>
+                <button
+                  onClick={() => {
+                    onToolSelect('image');
+                    onAddImage();
+                  }}
+                  aria-label="Image"
+                  className={`p-2 rounded-md ${selectedTool === 'image' ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  <Image size={18} />
+                </button>
 
-            <button
-              onClick={onAddQRCode}
-              className={`p-2 rounded-md ${selectedTool === 'qrcode' ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
-              title="QR Code Generator"
-            >
-              <QrCode size={18} />
-            </button>
+                <button
+                  onClick={onAddQRCode}
+                  className={`p-2 rounded-md ${selectedTool === 'qrcode' ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                  title="QR Code Generator"
+                >
+                  <QrCode size={18} />
+                </button>
 
-            <button
-              onClick={() => setIsShapeDialogOpen(true)}
-              className={`p-2 rounded-md ${shapeToolKeys.includes(selectedTool) ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
-              title="Shapes"
-            >
-              <Shapes size={18} />
-            </button>
-          </div>
+                <button
+                  onClick={() => setIsShapeDialogOpen(true)}
+                  className={`p-2 rounded-md ${shapeToolKeys.includes(selectedTool) ? 'bg-cyan-100 text-cyan-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                  title="Shapes"
+                >
+                  <Shapes size={18} />
+                </button>
+              </div>
 
-          <div className="w-px h-6 bg-gray-200" />
+              <div className="w-px h-6 bg-gray-200" />
+            </>
+          )}
 
           <div className="flex items-center space-x-1">
             <button

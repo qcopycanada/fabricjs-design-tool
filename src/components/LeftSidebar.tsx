@@ -12,9 +12,35 @@ import {
   Shapes,
   Octagon,
   Star,
-  QrCode
+  QrCode,
+  Grid,
+  Settings
 } from '../utils/icons';
 import type { CanvasObject } from '../types/canvas';
+import ShapeDialog from './ShapeDialog';
+
+const shapeToolKeys = [
+  'shape',
+  'rectangle',
+  'line',
+  'circle',
+  'triangle',
+  'pentagon',
+  'hexagon',
+  'star',
+  'ellipse',
+  'arrow',
+  'roundedRectangle',
+  'diamond',
+  'heart',
+  'cloud',
+  'lightning',
+  'speechBubble',
+  'cross',
+  'parallelogram',
+  'trapezoid',
+  'octagonShape',
+];
 
 interface LeftSidebarProps {
   objects: CanvasObject[];
@@ -24,6 +50,39 @@ interface LeftSidebarProps {
   onDeleteObject: (objectId: string) => void;
   onReorderObjects?: (draggedObjectId: string, targetObjectId: string) => void;
   onRenameObject?: (objectId: string, name: string) => void;
+  showLayers?: boolean;
+  showMainTools?: boolean;
+  showBorder?: boolean;
+  selectedTool?: string;
+  onToolSelect?: (tool: string) => void;
+  onMainToolUsed?: () => void;
+  onImageToolClick?: () => void;
+  onShapeToolClick?: () => void;
+  onQRCodeToolClick?: () => void;
+  onTableToolClick?: () => void;
+  onBackgroundToolClick?: () => void;
+  onAddText?: () => void;
+  onAddImage?: () => void;
+  onAddQRCode?: () => void;
+  onAddRectangle?: () => void;
+  onAddLine?: () => void;
+  onAddCircle?: () => void;
+  onAddTriangle?: () => void;
+  onAddPentagon?: () => void;
+  onAddHexagon?: () => void;
+  onAddStar?: () => void;
+  onAddEllipse?: () => void;
+  onAddArrow?: () => void;
+  onAddRoundedRectangle?: () => void;
+  onAddDiamond?: () => void;
+  onAddHeart?: () => void;
+  onAddCloud?: () => void;
+  onAddLightning?: () => void;
+  onAddSpeechBubble?: () => void;
+  onAddCross?: () => void;
+  onAddParallelogram?: () => void;
+  onAddTrapezoid?: () => void;
+  onAddOctagonShape?: () => void;
   className?: string;
 }
 
@@ -35,18 +94,54 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onDeleteObject,
   onReorderObjects,
   onRenameObject,
+  showLayers = true,
+  showMainTools = false,
+  showBorder = true,
+  selectedTool = 'select',
+  onToolSelect,
+  onMainToolUsed,
+  onImageToolClick,
+  onShapeToolClick,
+  onQRCodeToolClick,
+  onTableToolClick,
+  onBackgroundToolClick,
+  onAddText,
+  onAddImage,
+  onAddQRCode,
+  onAddRectangle,
+  onAddLine,
+  onAddCircle,
+  onAddTriangle,
+  onAddPentagon,
+  onAddHexagon,
+  onAddStar,
+  onAddEllipse,
+  onAddArrow,
+  onAddRoundedRectangle,
+  onAddDiamond,
+  onAddHeart,
+  onAddCloud,
+  onAddLightning,
+  onAddSpeechBubble,
+  onAddCross,
+  onAddParallelogram,
+  onAddTrapezoid,
+  onAddOctagonShape,
   className = 'w-64'
 }) => {
   const [draggedObjectId, setDraggedObjectId] = useState<string | null>(null);
   const [dropTargetObjectId, setDropTargetObjectId] = useState<string | null>(null);
   const [editingObjectId, setEditingObjectId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [editingTextObjectId, setEditingTextObjectId] = useState<string | null>(null);
+  const [editingTextContent, setEditingTextContent] = useState('');
   const [isTouchReordering, setIsTouchReordering] = useState(false);
   const selectedItemRef = useRef<HTMLDivElement | null>(null);
   const touchStartPosRef = useRef({ x: 0, y: 0 });
   const touchMovedRef = useRef(false);
   const suppressNextClickRef = useRef(false);
   const orderedObjects = useMemo(() => [...objects].reverse(), [objects]);
+  const [isShapeDialogOpen, setIsShapeDialogOpen] = useState(false);
 
   useEffect(() => {
     if (selectedItemRef.current) {
@@ -138,6 +233,30 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
     setEditingName('');
   };
 
+  const startTextContentEdit = (objectId: string, currentText: string) => {
+    setEditingTextObjectId(objectId);
+    setEditingTextContent(currentText);
+  };
+
+  const commitTextContentEdit = (obj: CanvasObject) => {
+    if (editingTextObjectId !== obj.id) return;
+
+    const textValue = editingTextContent;
+    (obj.object as any).set('text', textValue);
+    if (typeof (obj.object as any).setCoords === 'function') {
+      (obj.object as any).setCoords();
+    }
+    (obj.object as any).canvas?.renderAll();
+
+    setEditingTextObjectId(null);
+    setEditingTextContent('');
+  };
+
+  const cancelTextContentEdit = () => {
+    setEditingTextObjectId(null);
+    setEditingTextContent('');
+  };
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'text':
@@ -165,23 +284,203 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
     }
   };
 
+  const handleShapeSelect = (shapeType: string) => {
+    onToolSelect?.(shapeType);
+
+    switch (shapeType) {
+      case 'rectangle':
+        onAddRectangle?.();
+        break;
+      case 'circle':
+        onAddCircle?.();
+        break;
+      case 'line':
+        onAddLine?.();
+        break;
+      case 'triangle':
+        onAddTriangle?.();
+        break;
+      case 'pentagon':
+        onAddPentagon?.();
+        break;
+      case 'hexagon':
+        onAddHexagon?.();
+        break;
+      case 'star':
+        onAddStar?.();
+        break;
+      case 'ellipse':
+        onAddEllipse?.();
+        break;
+      case 'arrow':
+        onAddArrow?.();
+        break;
+      case 'roundedRectangle':
+        onAddRoundedRectangle?.();
+        break;
+      case 'diamond':
+        onAddDiamond?.();
+        break;
+      case 'heart':
+        onAddHeart?.();
+        break;
+      case 'cloud':
+        onAddCloud?.();
+        break;
+      case 'lightning':
+        onAddLightning?.();
+        break;
+      case 'speechBubble':
+        onAddSpeechBubble?.();
+        break;
+      case 'cross':
+        onAddCross?.();
+        break;
+      case 'parallelogram':
+        onAddParallelogram?.();
+        break;
+      case 'trapezoid':
+        onAddTrapezoid?.();
+        break;
+      case 'octagonShape':
+        onAddOctagonShape?.();
+        break;
+      default:
+        break;
+    }
+
+    onMainToolUsed?.();
+  };
+
   return (
-    <div className={`${className} bg-white border-r border-gray-200 h-full flex flex-col`}>
-      <div className="p-4 flex-shrink-0">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Layers</h3>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-4 pb-4">
-          <div className="space-y-1">
-            {orderedObjects.map((obj) => {
+    <div className={`${className} bg-white ${showBorder ? 'border-r border-gray-200' : ''} h-full flex flex-col`}>
+      {showMainTools && (
+        <div className="p-4 border-b border-gray-200 flex-shrink-0">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Tools</h3>
+          <div className="space-y-2">
+            <button
+              onClick={() => {
+                onToolSelect?.('text');
+                onAddText?.();
+                onMainToolUsed?.();
+              }}
+              aria-label="Text"
+              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'text' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              title="Text"
+            >
+              <Type size={18} />
+              <span className="text-sm font-medium">Text</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onToolSelect?.('image');
+                if (onImageToolClick) {
+                  onImageToolClick();
+                } else {
+                  onAddImage?.();
+                }
+                onMainToolUsed?.();
+              }}
+              aria-label="Image"
+              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'image' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              title="Image"
+            >
+              <Image size={18} />
+              <span className="text-sm font-medium">Upload</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onToolSelect?.('qrcode');
+                if (onQRCodeToolClick) {
+                  onQRCodeToolClick();
+                } else {
+                  onAddQRCode?.();
+                }
+                onMainToolUsed?.();
+              }}
+              aria-label="QR Code"
+              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'qrcode' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              title="QR Code"
+            >
+              <QrCode size={18} />
+              <span className="text-sm font-medium">QR Code</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onToolSelect?.('table');
+                if (onTableToolClick) {
+                  onTableToolClick();
+                }
+                onMainToolUsed?.();
+              }}
+              aria-label="Tables"
+              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'table' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              title="Tables"
+            >
+              <Grid size={18} />
+              <span className="text-sm font-medium">Tables</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onToolSelect?.('background');
+                if (onBackgroundToolClick) {
+                  onBackgroundToolClick();
+                }
+                onMainToolUsed?.();
+              }}
+              aria-label="Background"
+              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'background' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              title="Background"
+            >
+              <Settings size={18} />
+              <span className="text-sm font-medium">Background</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (onShapeToolClick) {
+                  onToolSelect?.('shape');
+                  onShapeToolClick();
+                  onMainToolUsed?.();
+                } else {
+                  setIsShapeDialogOpen(true);
+                }
+              }}
+              aria-label="Shapes"
+              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${shapeToolKeys.includes(selectedTool) ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              title="Shapes"
+            >
+              <Shapes size={18} />
+              <span className="text-sm font-medium">Shapes</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showLayers && (
+        <>
+          <div className="p-4 flex-shrink-0">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Layers</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-4 pb-4">
+              <div className="space-y-1">
+                {orderedObjects.map((obj) => {
               const isSelected = selectedObjectId === obj.id;
               const isDragging = draggedObjectId === obj.id;
               const isDropTarget = dropTargetObjectId === obj.id && draggedObjectId !== obj.id;
               const isEditing = editingObjectId === obj.id;
+              const isEditingTextContent = editingTextObjectId === obj.id;
+              const isTextLayer = obj.type === 'text';
+              const currentTextValue = String((obj.object as any)?.text ?? '');
 
               return (
+                <React.Fragment key={obj.id}>
                 <div
-                  key={obj.id}
                   data-layer-item-id={obj.id}
                   ref={isSelected ? selectedItemRef : null}
                   className={`flex items-center justify-between p-2 rounded text-sm group cursor-pointer transition-all duration-150 border ${
@@ -295,6 +594,18 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     )}
                   </div>
                   <div className="flex items-center space-x-1">
+                    {isTextLayer && (
+                      <button
+                        className="px-1.5 py-1 hover:bg-cyan-100 rounded text-cyan-700 text-[10px] font-medium"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startTextContentEdit(obj.id, currentTextValue);
+                        }}
+                        title="Edit text content"
+                      >
+                        Text
+                      </button>
+                    )}
                     <button
                       className="p-1 hover:bg-gray-200 rounded"
                       onClick={(e) => {
@@ -317,11 +628,65 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {isTextLayer && isEditingTextContent && (
+                  <div className="mt-2 px-2 pb-2" onClick={(e) => e.stopPropagation()}>
+                    <label className="block text-[10px] text-gray-500 mb-1">Text Content</label>
+                    <textarea
+                      autoFocus
+                      value={editingTextContent}
+                      onChange={(e) => setEditingTextContent(e.target.value)}
+                      onBlur={() => commitTextContentEdit(obj)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Escape') {
+                          cancelTextContentEdit();
+                        }
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                          commitTextContentEdit(obj);
+                        }
+                      }}
+                      rows={2}
+                      className="w-full px-2 py-1 text-xs border border-cyan-400 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
+                    <div className="mt-1 flex justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          cancelTextContentEdit();
+                        }}
+                        className="px-2 py-0.5 text-[10px] border border-gray-300 rounded text-gray-600 hover:bg-gray-100"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          commitTextContentEdit(obj);
+                        }}
+                        className="px-2 py-0.5 text-[10px] border border-cyan-300 rounded text-cyan-700 hover:bg-cyan-50"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                )}
+                </React.Fragment>
               );
-            })}
+                })}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
+
+      <ShapeDialog
+        isOpen={isShapeDialogOpen}
+        onClose={() => setIsShapeDialogOpen(false)}
+        onShapeSelect={handleShapeSelect}
+      />
     </div>
   );
 };

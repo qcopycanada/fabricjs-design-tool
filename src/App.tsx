@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type ChangeEvent } from 'react';
 import { FabricImage, Canvas as FabricCanvas } from 'fabric';
 import jsPDF from 'jspdf';
 import { AdvancedQRCodeGenerator } from './utils/advancedQRGenerator';
@@ -6,6 +6,14 @@ import './App.css';
 
 type CanvasFormat = 'portrait' | 'landscape';
 type EditorMode = 'dev' | 'prod';
+type RightSidebarTab = 'settings' | 'styles' | 'layers' | 'images' | 'shapes' | 'qrcode' | 'tables' | 'background';
+
+interface UploadedLibraryImage {
+  id: string;
+  name: string;
+  dataUrl: string;
+  file: File;
+}
 
 interface CanvasMockup {
   url: string;
@@ -96,6 +104,14 @@ const LOCK_SERIALIZATION_PROPS = [
   '__svgOriginalSource',
   '__svgColors',
   '__svgColorMap',
+  '__isTable',
+  '__tableRows',
+  '__tableColumns',
+  '__tableColumnWidths',
+  '__tableRowHeights',
+  '__tableFillColor',
+  '__tableStrokeColor',
+  '__tableStrokeWidth',
 ];
 
 const PX_PER_INCH = 300;
@@ -140,7 +156,6 @@ import LeftSidebar from './components/LeftSidebar';
 import CanvasWrapper from './components/CanvasWrapper';
 import RightSidebar from './components/RightSidebar';
 import BottomToolbar from './components/BottomToolbar';
-import QRCodeDialog from './components/QRCodeDialog';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal';
 
 // Hooks
@@ -152,6 +167,7 @@ import { useCanvasKeyboardShortcuts } from './hooks/useCanvasKeyboardShortcuts';
 import { CanvasExporter, CanvasAligner, CanvasGroupManager } from './utils/canvasUtils';
 import { CANVAS_DEFAULTS } from './utils/constants';
 import { downloadDataURL, downloadText } from './utils/helpers';
+import { ShapeFactory } from './utils/shapeFactory';
 
 // Types
 import type { CanvasDimensions } from './types/canvas';
@@ -212,6 +228,7 @@ function App() {
     addOctagonShape,
     addQRCode,
     addImage,
+    addImageFromFile,
   } = useShapeCreator(canvasState.canvas, addObjectToCanvas);
 
   // UI state
@@ -244,12 +261,13 @@ function App() {
   const [editorMode, setEditorMode] = useState<EditorMode>('prod');
   const [showModeToggle, setShowModeToggle] = useState(true);
   const [selectedTool, setSelectedTool] = useState<string>('select');
+  const [rightSidebarTabOverride, setRightSidebarTabOverride] = useState<RightSidebarTab | undefined>(undefined);
+  const [uploadedLibraryImages, setUploadedLibraryImages] = useState<UploadedLibraryImage[]>([]);
   const [canvasSwitchingEnabled, setCanvasSwitchingEnabled] = useState<boolean>(false);
   const [safeAreaVisible, setSafeAreaVisible] = useState<boolean>(true);
   const [trimAreaVisible, setTrimAreaVisible] = useState<boolean>(true);
   const [fitToScreenRequest, setFitToScreenRequest] = useState(0);
   const [mockupFitRequest, setMockupFitRequest] = useState(0);
-  const [isQRCodeDialogOpen, setIsQRCodeDialogOpen] = useState<boolean>(false);
   const [isKeyboardShortcutsModalOpen, setIsKeyboardShortcutsModalOpen] = useState<boolean>(false);
   const [mobilePanel, setMobilePanel] = useState<'none' | 'layers' | 'properties' | 'canvases'>('none');
   const [isMobilePanelInteracting, setIsMobilePanelInteracting] = useState<boolean>(false);
@@ -263,6 +281,8 @@ function App() {
   const mobilePanelDragOffsetRef = useRef({ x: 0, y: 0 });
   const mobilePanelRafRef = useRef<number | null>(null);
   const pendingPanelPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const uploadedImageInputRef = useRef<HTMLInputElement | null>(null);
+  const rightSidebarOverrideTimerRef = useRef<number | null>(null);
 
   const selectedLayerObjectId = useMemo(() => {
     if (!canvasState.selectedObject) return null;
@@ -833,19 +853,39 @@ function App() {
     }, '*');
   }, [buildProjectSnapshot, canvasDocuments, canvasObjects, canvasState.canvas]);
 
-  // QR Code dialog handlers
-  const handleOpenQRCodeDialog = () => {
-    setIsQRCodeDialogOpen(true);
-  };
+  const handleQRCodeToolClick = useCallback(() => {
+    setSelectedTool('qrcode');
 
-  const handleCloseQRCodeDialog = () => {
-    setIsQRCodeDialogOpen(false);
-  };
+    if (rightSidebarOverrideTimerRef.current !== null) {
+      window.clearTimeout(rightSidebarOverrideTimerRef.current);
+      rightSidebarOverrideTimerRef.current = null;
+    }
 
-  const handleGenerateQRCode = (content: string, type: string, options: any) => {
+    setRightSidebarTabOverride(undefined);
+
+    rightSidebarOverrideTimerRef.current = window.setTimeout(() => {
+      setRightSidebarTabOverride('qrcode');
+      rightSidebarOverrideTimerRef.current = null;
+    }, 0);
+
+    setMobilePanel('properties');
+  }, []);
+
+  const handleGenerateQRCodeFromTab = useCallback((content: string, type: string, options: any) => {
     addQRCode(type, content, options);
-    setIsQRCodeDialogOpen(false);
-  };
+
+    window.setTimeout(() => {
+      const activeCanvas = canvasState.canvas as FabricCanvas | null;
+      const activeObject = activeCanvas?.getActiveObject();
+      if (activeCanvas && activeObject) {
+        activeCanvas.centerObject(activeObject);
+        activeObject.setCoords();
+        activeCanvas.setActiveObject(activeObject);
+        activeCanvas.renderAll();
+        updateCanvasObjects();
+      }
+    }, 0);
+  }, [addQRCode, canvasState.canvas, updateCanvasObjects]);
 
   // QR Code color update function
   const updateQRCodeColors = async (qrObject: FabricImage, foregroundColor: string, backgroundColor: string) => {
@@ -1192,6 +1232,228 @@ function App() {
     await applyExternalProject(payload);
   }, [applyExternalProject]);
 
+  const openRightSidebarTab = useCallback((tab: RightSidebarTab) => {
+    if (rightSidebarOverrideTimerRef.current !== null) {
+      window.clearTimeout(rightSidebarOverrideTimerRef.current);
+      rightSidebarOverrideTimerRef.current = null;
+    }
+
+    setRightSidebarTabOverride(undefined);
+
+    rightSidebarOverrideTimerRef.current = window.setTimeout(() => {
+      setRightSidebarTabOverride(tab);
+      rightSidebarOverrideTimerRef.current = null;
+    }, 0);
+
+    setMobilePanel('properties');
+  }, []);
+
+  const handleUploadToolClick = useCallback(() => {
+    openRightSidebarTab('images');
+  }, [openRightSidebarTab]);
+
+  const handleShapeToolClick = useCallback(() => {
+    openRightSidebarTab('shapes');
+  }, [openRightSidebarTab]);
+
+  const handleTableToolClick = useCallback(() => {
+    setSelectedTool('table');
+    openRightSidebarTab('tables');
+  }, [openRightSidebarTab]);
+
+  const handleBackgroundToolClick = useCallback(() => {
+    setSelectedTool('background');
+    openRightSidebarTab('background');
+  }, [openRightSidebarTab]);
+
+  const handleAddShapeFromTab = useCallback((shapeType: string) => {
+    setSelectedTool('shape');
+
+    const activeCanvas = canvasState.canvas as FabricCanvas | null;
+    const objectCountBefore = activeCanvas?.getObjects().length ?? 0;
+
+    switch (shapeType) {
+      case 'rectangle':
+        addRectangle();
+        break;
+      case 'line':
+        addLine();
+        break;
+      case 'circle':
+        addCircle();
+        break;
+      case 'triangle':
+        addTriangle();
+        break;
+      case 'pentagon':
+        addPentagon();
+        break;
+      case 'hexagon':
+        addHexagon();
+        break;
+      case 'star':
+        addStar();
+        break;
+      case 'ellipse':
+        addEllipse();
+        break;
+      case 'arrow':
+        addArrow();
+        break;
+      case 'roundedRectangle':
+        addRoundedRectangle();
+        break;
+      case 'diamond':
+        addDiamond();
+        break;
+      case 'heart':
+        addHeart();
+        break;
+      case 'cloud':
+        addCloud();
+        break;
+      case 'lightning':
+        addLightning();
+        break;
+      case 'speechBubble':
+        addSpeechBubble();
+        break;
+      case 'cross':
+        addCross();
+        break;
+      case 'parallelogram':
+        addParallelogram();
+        break;
+      case 'trapezoid':
+        addTrapezoid();
+        break;
+      case 'octagonShape':
+        addOctagonShape();
+        break;
+      default:
+        break;
+    }
+
+    // Ensure shapes added from the right tab are visible on the main artboard.
+    if (activeCanvas) {
+      const objectCountAfter = activeCanvas.getObjects().length;
+      const activeObject = activeCanvas.getActiveObject();
+
+      if (activeObject && objectCountAfter > objectCountBefore) {
+        activeCanvas.centerObject(activeObject);
+        activeObject.setCoords();
+        activeCanvas.setActiveObject(activeObject);
+        activeCanvas.renderAll();
+        updateCanvasObjects();
+      }
+    }
+  }, [
+    addArrow,
+    addCircle,
+    addCloud,
+    addCross,
+    addDiamond,
+    addEllipse,
+    addHeart,
+    addHexagon,
+    addLightning,
+    addLine,
+    addOctagonShape,
+    addParallelogram,
+    addPentagon,
+    addRectangle,
+    addRoundedRectangle,
+    addSpeechBubble,
+    addStar,
+    addTrapezoid,
+    addTriangle,
+    canvasState.canvas,
+    updateCanvasObjects,
+  ]);
+
+  const handleAddTableFromTab = useCallback((rows: number, columns: number, columnWidths: number[], rowHeights: number[]) => {
+    setSelectedTool('table');
+
+    const activeCanvas = canvasState.canvas as FabricCanvas | null;
+    if (!activeCanvas) return;
+
+    // Add directly to the live editor canvas to avoid stale helper references.
+    const tableObject = ShapeFactory.createTable(rows, columns, columnWidths, rowHeights);
+    activeCanvas.add(tableObject);
+    activeCanvas.centerObject(tableObject);
+    tableObject.setCoords();
+    activeCanvas.setActiveObject(tableObject);
+    activeCanvas.bringObjectToFront(tableObject);
+    activeCanvas.requestRenderAll();
+
+    updateCanvasObjects();
+    persistActiveCanvas();
+
+    // Keep the inserted table visible even when the viewport has been moved.
+    setFitToScreenRequest((prev) => prev + 1);
+  }, [canvasState.canvas, persistActiveCanvas, updateCanvasObjects]);
+
+  const handleUploadImageRequest = useCallback(() => {
+    uploadedImageInputRef.current?.click();
+  }, []);
+
+  const handleUploadedImageInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    const readFileAsDataUrl = (file: File) => new Promise<UploadedLibraryImage | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = typeof reader.result === 'string' ? reader.result : null;
+        if (!dataUrl) {
+          resolve(null);
+          return;
+        }
+        resolve({
+          id: `upload-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          name: file.name,
+          dataUrl,
+          file,
+        });
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+
+    const uploaded = await Promise.all(imageFiles.map(readFileAsDataUrl));
+    const validUploaded = uploaded.filter((item): item is UploadedLibraryImage => Boolean(item));
+
+    if (validUploaded.length) {
+      setUploadedLibraryImages((prev) => [...validUploaded, ...prev]);
+      openRightSidebarTab('images');
+    }
+
+    event.target.value = '';
+  }, [openRightSidebarTab]);
+
+  useEffect(() => {
+    return () => {
+      if (rightSidebarOverrideTimerRef.current !== null) {
+        window.clearTimeout(rightSidebarOverrideTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleAddUploadedImageToCanvas = useCallback(async (imageId: string) => {
+    const target = uploadedLibraryImages.find((item) => item.id === imageId);
+    if (!target) return;
+    await addImageFromFile(target.file);
+  }, [addImageFromFile, uploadedLibraryImages]);
+
+  const handleRemoveUploadedImage = useCallback((imageId: string) => {
+    setUploadedLibraryImages((prev) => prev.filter((item) => item.id !== imageId));
+  }, []);
+
+  const handleClearUploadedImages = useCallback(() => {
+    setUploadedLibraryImages([]);
+  }, []);
+
   useEffect(() => {
     const closePanelOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -1292,6 +1554,15 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+      <input
+        ref={uploadedImageInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleUploadedImageInputChange}
+        className="hidden"
+      />
+
       <Header 
         selectedTool={selectedTool}
         onToolSelect={setSelectedTool}
@@ -1316,12 +1587,13 @@ function App() {
         onAddParallelogram={addParallelogram}
         onAddTrapezoid={addTrapezoid}
         onAddOctagonShape={addOctagonShape}
-        onAddQRCode={handleOpenQRCodeDialog}
+        onAddQRCode={handleQRCodeToolClick}
         onSave={handleSaveForParent}
         onExport={handleExport}
         onImportJSON={handleImportJSON}
         editorMode={editorMode}
         onEditorModeChange={setEditorMode}
+        showMainTools={false}
         showModeToggle={showModeToggle}
         showActionButtons={showModeToggle}
         onUndo={undo}
@@ -1368,11 +1640,87 @@ function App() {
             onDeleteObject={deleteObject}
             onReorderObjects={reorderObjects}
             onRenameObject={renameObject}
+            showLayers={false}
+            showMainTools
+            selectedTool={selectedTool}
+            onToolSelect={setSelectedTool}
+            onMainToolUsed={() => setMobilePanel('properties')}
+            onImageToolClick={handleUploadToolClick}
+            onShapeToolClick={handleShapeToolClick}
+            onQRCodeToolClick={handleQRCodeToolClick}
+            onTableToolClick={handleTableToolClick}
+            onBackgroundToolClick={handleBackgroundToolClick}
+            onAddText={addText}
+            onAddImage={addImage}
+            onAddQRCode={handleQRCodeToolClick}
+            onAddRectangle={addRectangle}
+            onAddLine={addLine}
+            onAddCircle={addCircle}
+            onAddTriangle={addTriangle}
+            onAddPentagon={addPentagon}
+            onAddHexagon={addHexagon}
+            onAddStar={addStar}
+            onAddEllipse={addEllipse}
+            onAddArrow={addArrow}
+            onAddRoundedRectangle={addRoundedRectangle}
+            onAddDiamond={addDiamond}
+            onAddHeart={addHeart}
+            onAddCloud={addCloud}
+            onAddLightning={addLightning}
+            onAddSpeechBubble={addSpeechBubble}
+            onAddCross={addCross}
+            onAddParallelogram={addParallelogram}
+            onAddTrapezoid={addTrapezoid}
+            onAddOctagonShape={addOctagonShape}
             className="w-64"
           />
         </div>
         
         <div className="flex-1 flex flex-col relative">
+          <div className="hidden xl:block absolute top-4 left-4 z-30 w-80 h-[min(78vh,760px)]">
+            <RightSidebar 
+              selectedObject={canvasState.selectedObject}
+              canvas={canvasState.canvas}
+              canvasDimensions={canvasDimensions}
+              updateCanvasObjects={updateCanvasObjects}
+              updateCanvasDimensions={updateCanvasDimensions}
+              canvasCount={canvasDocuments.length}
+              onCanvasCountChange={handleCanvasCountChange}
+              canvasFormat={canvasFormat}
+              onCanvasFormatChange={handleCanvasFormatChange}
+              editorMode={editorMode}
+              updateQRCodeColors={updateQRCodeColors}
+              onLockStateChange={() => persistActiveCanvas()}
+              mockup={activeCanvasMockup}
+              onMockupChange={updateActiveCanvasMockup}
+              onObjectUpdate={updateCanvasObjects}
+              alignmentGuides={alignmentGuides}
+              layerObjects={canvasObjects}
+              selectedLayerObjectId={selectedLayerObjectId}
+              onSelectLayerObject={selectObject}
+              onToggleLayerVisibility={toggleObjectVisibility}
+              onDeleteLayerObject={deleteObject}
+              onReorderLayerObjects={reorderObjects}
+              onRenameLayerObject={renameObject}
+              activeTabOverride={rightSidebarTabOverride}
+              onUploadImageRequest={handleUploadImageRequest}
+              uploadedImages={uploadedLibraryImages}
+              onAddUploadedImageToCanvas={handleAddUploadedImageToCanvas}
+              onRemoveUploadedImage={handleRemoveUploadedImage}
+              onClearUploadedImages={handleClearUploadedImages}
+              onAddShapeFromTab={handleAddShapeFromTab}
+              onGenerateQRCodeFromTab={handleGenerateQRCodeFromTab}
+              onAddTableFromTab={handleAddTableFromTab}
+              showShapesTab={selectedTool === 'shape'}
+              showQrTab={selectedTool === 'qrcode'}
+              showTablesTab={selectedTool === 'table'}
+              showImagesTab={selectedTool === 'image'}
+              showBackgroundTab={selectedTool === 'background'}
+              isFloating
+              className="w-full h-full rounded-xl border border-gray-200 shadow-xl overflow-hidden"
+            />
+          </div>
+
           <CanvasWrapper 
             canvasRef={canvasRef}
             canvas={canvasState.canvas}
@@ -1486,27 +1834,6 @@ function App() {
           )}
         </div>
         
-        <div className="hidden xl:block">
-          <RightSidebar 
-            selectedObject={canvasState.selectedObject}
-            canvas={canvasState.canvas}
-            canvasDimensions={canvasDimensions}
-            updateCanvasObjects={updateCanvasObjects}
-            updateCanvasDimensions={updateCanvasDimensions}
-            canvasCount={canvasDocuments.length}
-            onCanvasCountChange={handleCanvasCountChange}
-            canvasFormat={canvasFormat}
-            onCanvasFormatChange={handleCanvasFormatChange}
-            editorMode={editorMode}
-            updateQRCodeColors={updateQRCodeColors}
-            onLockStateChange={() => persistActiveCanvas()}
-            mockup={activeCanvasMockup}
-            onMockupChange={updateActiveCanvasMockup}
-            onObjectUpdate={updateCanvasObjects}
-            alignmentGuides={alignmentGuides}
-            className="w-80"
-          />
-        </div>
       </div>
 
       {mobilePanel !== 'none' && (
@@ -1606,6 +1933,27 @@ function App() {
                   onMockupChange={updateActiveCanvasMockup}
                   onObjectUpdate={updateCanvasObjects}
                   alignmentGuides={alignmentGuides}
+                  layerObjects={canvasObjects}
+                  selectedLayerObjectId={selectedLayerObjectId}
+                  onSelectLayerObject={selectObject}
+                  onToggleLayerVisibility={toggleObjectVisibility}
+                  onDeleteLayerObject={deleteObject}
+                  onReorderLayerObjects={reorderObjects}
+                  onRenameLayerObject={renameObject}
+                  activeTabOverride={rightSidebarTabOverride}
+                  onUploadImageRequest={handleUploadImageRequest}
+                  uploadedImages={uploadedLibraryImages}
+                  onAddUploadedImageToCanvas={handleAddUploadedImageToCanvas}
+                  onRemoveUploadedImage={handleRemoveUploadedImage}
+                  onClearUploadedImages={handleClearUploadedImages}
+                  onAddShapeFromTab={handleAddShapeFromTab}
+                  onGenerateQRCodeFromTab={handleGenerateQRCodeFromTab}
+                  onAddTableFromTab={handleAddTableFromTab}
+                  showShapesTab={selectedTool === 'shape'}
+                  showQrTab={selectedTool === 'qrcode'}
+                  showTablesTab={selectedTool === 'table'}
+                  showImagesTab={selectedTool === 'image'}
+                  showBackgroundTab={selectedTool === 'background'}
                   className="w-full"
                 />
               </div>
@@ -1683,13 +2031,6 @@ function App() {
           </div>
         </div>
       )}
-
-      {/* QR Code Dialog */}
-      <QRCodeDialog
-        isOpen={isQRCodeDialogOpen}
-        onClose={handleCloseQRCodeDialog}
-        onGenerate={handleGenerateQRCode}
-      />
 
       {/* Keyboard Shortcuts Modal */}
       <KeyboardShortcutsModal

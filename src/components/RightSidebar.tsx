@@ -1,10 +1,23 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Upload, Copy, Trash2, MoveUp, MoveDown } from '../utils/icons';
 import { Shadow, Gradient, Rect, filters, FabricImage } from 'fabric';
 import AlignmentGuidesSettings from './AlignmentGuidesSettings';
 import type { AlignmentGuidesConfig } from '../types/canvas';
+import type { QRCodeOptions, QRCodeContent } from '../types/canvas';
+import type { CanvasObject } from '../types/canvas';
+import { AdvancedQRCodeGenerator } from '../utils/advancedQRGenerator';
+import { ShapeFactory } from '../utils/shapeFactory';
+import LeftSidebar from './LeftSidebar';
 
 const CANVAS_DPI = 150;
+const DEFAULT_TABLE_COLUMN_WIDTH = 120;
+const DEFAULT_TABLE_ROW_HEIGHT = 52;
+const TABLE_PRESETS: Array<{ rows: number; columns: number; label: string }> = [
+  { rows: 2, columns: 2, label: '2x2' },
+  { rows: 3, columns: 3, label: '3x3' },
+  { rows: 3, columns: 4, label: '3x4' },
+  { rows: 4, columns: 6, label: '4x6' },
+];
 const STYLE_COLOR_DECLARATION_REGEX = /(fill|stroke|stop-color|color)\s*:\s*([^;]+)/gi;
 
 interface CanvasMockup {
@@ -19,6 +32,142 @@ interface CanvasMockup {
   imageWidth: number;
   imageHeight: number;
 }
+
+type RightSidebarTab = 'settings' | 'styles' | 'layers' | 'images' | 'shapes' | 'qrcode' | 'tables' | 'background';
+
+const BACKGROUND_PRESET_COLORS = [
+  '#ffffff',
+  '#f8fafc',
+  '#fef3c7',
+  '#e0f2fe',
+  '#ecfccb',
+  '#fae8ff',
+  '#111827',
+  '#0f766e',
+  '#1d4ed8',
+  '#b91c1c',
+];
+
+interface UploadedImageItem {
+  id: string;
+  name: string;
+  dataUrl: string;
+}
+
+interface ShapeTabItem {
+  type: string;
+  label: string;
+}
+
+interface ShapeTabCategory {
+  id: string;
+  name: string;
+  shapes: ShapeTabItem[];
+}
+
+const SHAPE_TAB_CATEGORIES: ShapeTabCategory[] = [
+  {
+    id: 'basic',
+    name: 'Basic Shapes',
+    shapes: [
+      { type: 'rectangle', label: 'Rectangle' },
+      { type: 'circle', label: 'Circle' },
+      { type: 'ellipse', label: 'Ellipse' },
+      { type: 'line', label: 'Line' },
+      { type: 'roundedRectangle', label: 'Rounded Rectangle' },
+    ],
+  },
+  {
+    id: 'polygons',
+    name: 'Polygons',
+    shapes: [
+      { type: 'triangle', label: 'Triangle' },
+      { type: 'diamond', label: 'Diamond' },
+      { type: 'pentagon', label: 'Pentagon' },
+      { type: 'hexagon', label: 'Hexagon' },
+      { type: 'octagonShape', label: 'Octagon' },
+    ],
+  },
+  {
+    id: 'symbols',
+    name: 'Symbols',
+    shapes: [
+      { type: 'star', label: 'Star' },
+      { type: 'heart', label: 'Heart' },
+      { type: 'cross', label: 'Cross' },
+      { type: 'arrow', label: 'Arrow' },
+    ],
+  },
+  {
+    id: 'special',
+    name: 'Special Shapes',
+    shapes: [
+      { type: 'cloud', label: 'Cloud' },
+      { type: 'lightning', label: 'Lightning' },
+      { type: 'speechBubble', label: 'Speech Bubble' },
+      { type: 'parallelogram', label: 'Parallelogram' },
+      { type: 'trapezoid', label: 'Trapezoid' },
+    ],
+  },
+];
+
+const ALL_SHAPE_TAB_ITEMS = SHAPE_TAB_CATEGORIES.flatMap((category) => category.shapes);
+
+const SHAPE_PREVIEW_STROKE = '#0f766e';
+const SHAPE_PREVIEW_FILL = '#ccfbf1';
+
+const renderShapePreview = (shapeType: string) => {
+  const baseProps = {
+    stroke: SHAPE_PREVIEW_STROKE,
+    strokeWidth: 2,
+    fill: SHAPE_PREVIEW_FILL,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  switch (shapeType) {
+    case 'rectangle':
+      return <rect x="14" y="12" width="36" height="24" rx="1" {...baseProps} />;
+    case 'roundedRectangle':
+      return <rect x="12" y="11" width="40" height="26" rx="6" {...baseProps} />;
+    case 'line':
+      return <line x1="12" y1="34" x2="52" y2="14" stroke={SHAPE_PREVIEW_STROKE} strokeWidth="3" strokeLinecap="round" />;
+    case 'circle':
+      return <circle cx="32" cy="24" r="14" {...baseProps} />;
+    case 'ellipse':
+      return <ellipse cx="32" cy="24" rx="17" ry="12" {...baseProps} />;
+    case 'triangle':
+      return <polygon points="32,9 52,39 12,39" {...baseProps} />;
+    case 'pentagon':
+      return <polygon points="32,8 51,21 44,40 20,40 13,21" {...baseProps} />;
+    case 'hexagon':
+      return <polygon points="20,9 44,9 54,24 44,39 20,39 10,24" {...baseProps} />;
+    case 'star':
+      return <polygon points="32,8 38,20 51,20 41,28 45,40 32,32 19,40 23,28 13,20 26,20" {...baseProps} />;
+    case 'arrow':
+      return <polygon points="12,21 36,21 36,13 52,24 36,35 36,27 12,27" {...baseProps} />;
+    case 'diamond':
+      return <polygon points="32,7 51,24 32,41 13,24" {...baseProps} />;
+    case 'heart':
+      return <path d="M32 40C32 40 14 28 14 18C14 12 19 9 23 9C27 9 30 12 32 15C34 12 37 9 41 9C45 9 50 12 50 18C50 28 32 40 32 40Z" {...baseProps} />;
+    case 'cloud':
+      return <path d="M20 37H45C51 37 55 33 55 28C55 23 51 20 47 20C46 14 41 10 35 10C29 10 24 14 23 20C18 20 14 24 14 29C14 34 17 37 20 37Z" {...baseProps} />;
+    case 'lightning':
+      return <polygon points="34,8 19,27 30,27 24,40 45,20 33,20" {...baseProps} />;
+    case 'speechBubble':
+      return <path d="M12 11H52V31H35L27 39V31H12V11Z" {...baseProps} />;
+    case 'cross':
+      return <path d="M27 10H37V19H46V29H37V38H27V29H18V19H27V10Z" {...baseProps} />;
+    case 'parallelogram':
+      return <polygon points="18,12 52,12 44,36 10,36" {...baseProps} />;
+    case 'trapezoid':
+      return <polygon points="20,12 44,12 52,36 12,36" {...baseProps} />;
+    case 'octagonShape':
+      return <polygon points="22,8 42,8 56,22 56,26 42,40 22,40 8,26 8,22" {...baseProps} />;
+    default:
+      return <rect x="14" y="12" width="36" height="24" rx="1" {...baseProps} />;
+  }
+};
 
 const normalizeSvgColorToken = (token: string): string => token.replace(/!important/gi, '').trim().toLowerCase();
 
@@ -135,7 +284,7 @@ const toHexColor = (value: string): string => {
     return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
   }
 
-  const rgbMatch = normalized.match(/^rgba?\(([^\)]+)\)$/i);
+  const rgbMatch = normalized.match(/^rgba?\(([^)]+)\)$/i);
   if (rgbMatch) {
     const [r, g, b] = rgbMatch[1].split(',').slice(0, 3).map((part) => Number(part.trim()));
     if ([r, g, b].every((n) => Number.isFinite(n) && n >= 0 && n <= 255)) {
@@ -168,6 +317,28 @@ interface RightSidebarProps {
     updateConfig: (config: Partial<AlignmentGuidesConfig>) => void;
     toggle: () => void;
   };
+  layerObjects?: CanvasObject[];
+  selectedLayerObjectId?: string | null;
+  onSelectLayerObject?: (objectId: string) => void;
+  onToggleLayerVisibility?: (objectId: string) => void;
+  onDeleteLayerObject?: (objectId: string) => void;
+  onReorderLayerObjects?: (draggedObjectId: string, targetObjectId: string) => void;
+  onRenameLayerObject?: (objectId: string, name: string) => void;
+  activeTabOverride?: RightSidebarTab;
+  onUploadImageRequest?: () => void;
+  uploadedImages?: UploadedImageItem[];
+  onAddUploadedImageToCanvas?: (imageId: string) => void;
+  onRemoveUploadedImage?: (imageId: string) => void;
+  onClearUploadedImages?: () => void;
+  onAddShapeFromTab?: (shapeType: string) => void;
+  onGenerateQRCodeFromTab?: (content: string, type: string, options: QRCodeOptions) => void;
+  onAddTableFromTab?: (rows: number, columns: number, columnWidths: number[], rowHeights: number[]) => void;
+  showShapesTab?: boolean;
+  showQrTab?: boolean;
+  showTablesTab?: boolean;
+  showImagesTab?: boolean;
+  showBackgroundTab?: boolean;
+  isFloating?: boolean;
   className?: string;
 }
 
@@ -188,9 +359,31 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   mockup,
   onMockupChange,
   alignmentGuides,
+  layerObjects = [],
+  selectedLayerObjectId,
+  onSelectLayerObject,
+  onToggleLayerVisibility,
+  onDeleteLayerObject,
+  onReorderLayerObjects,
+  onRenameLayerObject,
+  activeTabOverride,
+  onUploadImageRequest,
+  uploadedImages = [],
+  onAddUploadedImageToCanvas,
+  onRemoveUploadedImage,
+  onClearUploadedImages,
+  onAddShapeFromTab,
+  onGenerateQRCodeFromTab,
+  onAddTableFromTab,
+  showShapesTab = true,
+  showQrTab = true,
+  showTablesTab = true,
+  showImagesTab = true,
+  showBackgroundTab = true,
+  isFloating = false,
   className = 'w-80'
 }) => {
-  const [activeTab, setActiveTab] = useState<'settings' | 'styles'>('settings');
+  const [activeTab, setActiveTab] = useState<RightSidebarTab>('settings');
   const [canvasWidth, setCanvasWidth] = useState(canvasDimensions?.width || 800);
   const [canvasHeight, setCanvasHeight] = useState(canvasDimensions?.height || 600);
   const [localCanvasCount, setLocalCanvasCount] = useState(canvasCount);
@@ -200,8 +393,93 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   const [backgroundGradientType, setBackgroundGradientType] = useState<'linear' | 'radial'>('linear');
   const [backgroundGradientStartColor, setBackgroundGradientStartColor] = useState('#3b82f6');
   const [backgroundGradientEndColor, setBackgroundGradientEndColor] = useState('#1d4ed8');
+  const [recentBackgroundColors, setRecentBackgroundColors] = useState<string[]>([]);
   const [mockupUrl, setMockupUrl] = useState('');
   const [mockupUrlError, setMockupUrlError] = useState<string | null>(null);
+  const [qrContentType, setQrContentType] = useState<keyof QRCodeContent>('URL');
+  const [qrContentData, setQrContentData] = useState<QRCodeContent[keyof QRCodeContent]>({ url: 'https://brandcrowd.com/' });
+  const [qrOptions, setQrOptions] = useState<QRCodeOptions>({
+    width: 200,
+    height: 200,
+    margin: 10,
+    errorCorrectionLevel: 'M',
+    dotsOptions: {
+      color: '#000000',
+      type: 'square',
+    },
+    backgroundOptions: {
+      color: '#FFFFFF',
+    },
+    cornersSquareOptions: {
+      color: '#000000',
+      type: 'square',
+    },
+    cornersDotOptions: {
+      color: '#000000',
+      type: 'square',
+    },
+    color: {
+      dark: '#000000',
+      light: '#FFFFFF',
+    },
+    style: 'square',
+  });
+  const [qrValidationErrors, setQrValidationErrors] = useState<string[]>([]);
+  const [qrPreviewSvg, setQrPreviewSvg] = useState<string>('');
+  const [tableRows, setTableRows] = useState<number>(3);
+  const [tableColumns, setTableColumns] = useState<number>(4);
+  const [tableColumnWidths, setTableColumnWidths] = useState<number[]>(
+    Array.from({ length: 4 }, () => DEFAULT_TABLE_COLUMN_WIDTH),
+  );
+  const [tableRowHeights, setTableRowHeights] = useState<number[]>(
+    Array.from({ length: 3 }, () => DEFAULT_TABLE_ROW_HEIGHT),
+  );
+  const [selectedTableRows, setSelectedTableRows] = useState<number>(3);
+  const [selectedTableColumns, setSelectedTableColumns] = useState<number>(4);
+  const [selectedTableColumnWidths, setSelectedTableColumnWidths] = useState<number[]>(
+    Array.from({ length: 4 }, () => DEFAULT_TABLE_COLUMN_WIDTH),
+  );
+  const [selectedTableRowHeights, setSelectedTableRowHeights] = useState<number[]>(
+    Array.from({ length: 3 }, () => DEFAULT_TABLE_ROW_HEIGHT),
+  );
+  const [selectedTableFillColor, setSelectedTableFillColor] = useState<string>(ShapeFactory.DEFAULT_TABLE_FILL_COLOR);
+  const [selectedTableStrokeColor, setSelectedTableStrokeColor] = useState<string>(ShapeFactory.DEFAULT_TABLE_STROKE_COLOR);
+  const [selectedTableStrokeWidth, setSelectedTableStrokeWidth] = useState<number>(ShapeFactory.DEFAULT_TABLE_STROKE_WIDTH);
+  const qrPreviewDataUrl = useMemo(
+    () => (qrPreviewSvg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrPreviewSvg)}` : ''),
+    [qrPreviewSvg],
+  );
+  const selectedTableObject = useMemo(() => {
+    if (!selectedObject) return null;
+
+    const directCandidate = selectedObject as any;
+    if (directCandidate.__isTable === true || Number(directCandidate.__tableRows) > 0) {
+      return directCandidate;
+    }
+
+    if (
+      selectedObject.type === 'activeSelection'
+      && typeof (selectedObject as any).getObjects === 'function'
+    ) {
+      const nestedTable = (selectedObject as any)
+        .getObjects()
+        .find((obj: any) => obj?.__isTable === true || Number(obj?.__tableRows) > 0);
+      if (nestedTable) {
+        return nestedTable;
+      }
+    }
+
+    return null;
+  }, [selectedObject]);
+  const isSelectedTableObject = Boolean(selectedTableObject);
+  const tableTotalWidth = useMemo(
+    () => tableColumnWidths.reduce((sum, value) => sum + value, 0),
+    [tableColumnWidths],
+  );
+  const tableTotalHeight = useMemo(
+    () => tableRowHeights.reduce((sum, value) => sum + value, 0),
+    [tableRowHeights],
+  );
 
   const inchesFromPixels = (pixels: number) => Number((pixels / CANVAS_DPI).toFixed(2));
   const pixelsFromInches = (inches: number) => Math.max(1, Math.round(inches * CANVAS_DPI));
@@ -211,6 +489,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   const [contrast, setContrast] = useState(0);
   const [saturation, setSaturation] = useState(0);
   const [svgColorMap, setSvgColorMap] = useState<Record<string, string>>({});
+  const hideCoreTabsForBackground = showBackgroundTab;
   
   // Background image upload ref
   const backgroundImageInputRef = useRef<HTMLInputElement>(null);
@@ -224,7 +503,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
 
   // Update component when selectedObject changes
   useEffect(() => {
-    if (selectedObject) {
+    if (selectedObject && activeTab === 'settings') {
       setActiveTab('styles');
     }
 
@@ -247,7 +526,264 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
       setSvgColorMap(nextMap);
     }
     triggerUpdate();
-  }, [selectedObject, triggerUpdate]);
+  }, [activeTab, selectedObject, triggerUpdate]);
+
+  useEffect(() => {
+    if (!activeTabOverride) return;
+    setActiveTab(activeTabOverride);
+  }, [activeTabOverride]);
+
+  useEffect(() => {
+    if (!showImagesTab && activeTab === 'images') {
+      setActiveTab('settings');
+    }
+  }, [activeTab, showImagesTab]);
+
+  useEffect(() => {
+    if (!showShapesTab && activeTab === 'shapes') {
+      setActiveTab('settings');
+    }
+  }, [activeTab, showShapesTab]);
+
+  useEffect(() => {
+    if (!showQrTab && activeTab === 'qrcode') {
+      setActiveTab('settings');
+    }
+  }, [activeTab, showQrTab]);
+
+  useEffect(() => {
+    if (!showTablesTab && activeTab === 'tables') {
+      setActiveTab('settings');
+    }
+  }, [activeTab, showTablesTab]);
+
+  useEffect(() => {
+    if (!showBackgroundTab && activeTab === 'background') {
+      setActiveTab('settings');
+    }
+  }, [activeTab, showBackgroundTab]);
+
+  useEffect(() => {
+    if (!hideCoreTabsForBackground) return;
+    if (activeTab === 'settings' || activeTab === 'styles' || activeTab === 'layers') {
+      setActiveTab('background');
+    }
+  }, [activeTab, hideCoreTabsForBackground]);
+
+  useEffect(() => {
+    setTableColumnWidths((prev) => Array.from({ length: tableColumns }, (_, index) => {
+      const value = prev[index];
+      return Number.isFinite(value) && value > 0 ? value : DEFAULT_TABLE_COLUMN_WIDTH;
+    }));
+  }, [tableColumns]);
+
+  useEffect(() => {
+    setTableRowHeights((prev) => Array.from({ length: tableRows }, (_, index) => {
+      const value = prev[index];
+      return Number.isFinite(value) && value > 0 ? value : DEFAULT_TABLE_ROW_HEIGHT;
+    }));
+  }, [tableRows]);
+
+  useEffect(() => {
+    const validation = AdvancedQRCodeGenerator.validateContent(qrContentType, qrContentData);
+    setQrValidationErrors(validation.errors);
+  }, [qrContentData, qrContentType]);
+
+  useEffect(() => {
+    if (!isSelectedTableObject || !selectedTableObject) return;
+
+    const tableRowsValue = Math.max(1, Math.min(50, Number((selectedTableObject as any).__tableRows) || 1));
+    const tableColumnsValue = Math.max(1, Math.min(50, Number((selectedTableObject as any).__tableColumns) || 1));
+    const columnWidths = Array.isArray((selectedTableObject as any).__tableColumnWidths)
+      ? (selectedTableObject as any).__tableColumnWidths as number[]
+      : [];
+    const rowHeights = Array.isArray((selectedTableObject as any).__tableRowHeights)
+      ? (selectedTableObject as any).__tableRowHeights as number[]
+      : [];
+
+    setSelectedTableRows(tableRowsValue);
+    setSelectedTableColumns(tableColumnsValue);
+    setSelectedTableColumnWidths(
+      Array.from({ length: tableColumnsValue }, (_, index) => Math.max(24, Math.floor(Number(columnWidths[index]) || DEFAULT_TABLE_COLUMN_WIDTH))),
+    );
+    setSelectedTableRowHeights(
+      Array.from({ length: tableRowsValue }, (_, index) => Math.max(24, Math.floor(Number(rowHeights[index]) || DEFAULT_TABLE_ROW_HEIGHT))),
+    );
+
+    const fillColor = (selectedTableObject as any).__tableFillColor || ShapeFactory.DEFAULT_TABLE_FILL_COLOR;
+    const strokeColor = (selectedTableObject as any).__tableStrokeColor || ShapeFactory.DEFAULT_TABLE_STROKE_COLOR;
+    const strokeWidth = Math.max(0.5, Number((selectedTableObject as any).__tableStrokeWidth) || ShapeFactory.DEFAULT_TABLE_STROKE_WIDTH);
+
+    setSelectedTableFillColor(fillColor);
+    setSelectedTableStrokeColor(strokeColor);
+    setSelectedTableStrokeWidth(strokeWidth);
+  }, [isSelectedTableObject, selectedTableObject]);
+
+  useEffect(() => {
+    setSelectedTableColumnWidths((prev) => Array.from({ length: selectedTableColumns }, (_, index) => {
+      const value = prev[index];
+      return Number.isFinite(value) && value > 0 ? value : DEFAULT_TABLE_COLUMN_WIDTH;
+    }));
+  }, [selectedTableColumns]);
+
+  useEffect(() => {
+    setSelectedTableRowHeights((prev) => Array.from({ length: selectedTableRows }, (_, index) => {
+      const value = prev[index];
+      return Number.isFinite(value) && value > 0 ? value : DEFAULT_TABLE_ROW_HEIGHT;
+    }));
+  }, [selectedTableRows]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const generatePreview = async () => {
+      const validation = AdvancedQRCodeGenerator.validateContent(qrContentType, qrContentData);
+      if (!validation.isValid) {
+        if (!isCancelled) {
+          setQrPreviewSvg('');
+        }
+        return;
+      }
+
+      try {
+        const content = AdvancedQRCodeGenerator.generateContentString(qrContentType, qrContentData);
+        const svg = await AdvancedQRCodeGenerator.generateAdvancedQRCode(content, qrOptions);
+        if (!isCancelled) {
+          setQrPreviewSvg(svg);
+        }
+      } catch {
+        if (!isCancelled) {
+          setQrPreviewSvg('');
+        }
+      }
+    };
+
+    void generatePreview();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [qrContentData, qrContentType, qrOptions]);
+
+  const handleQrContentTypeChange = (nextType: keyof QRCodeContent) => {
+    setQrContentType(nextType);
+
+    switch (nextType) {
+      case 'URL':
+        setQrContentData({ url: 'https://brandcrowd.com/' });
+        break;
+      case 'Email':
+        setQrContentData({ email: '' });
+        break;
+      case 'Phone':
+        setQrContentData({ phone: '' });
+        break;
+      case 'SMS':
+        setQrContentData({ phone: '', message: '' });
+        break;
+      case 'VCard':
+        setQrContentData({ firstName: '', lastName: '' });
+        break;
+      case 'Event':
+        setQrContentData({ title: '', startDate: '' });
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleGenerateQrFromTab = () => {
+    const validation = AdvancedQRCodeGenerator.validateContent(qrContentType, qrContentData);
+    if (!validation.isValid) {
+      setQrValidationErrors(validation.errors);
+      return;
+    }
+
+    const content = AdvancedQRCodeGenerator.generateContentString(qrContentType, qrContentData);
+    onGenerateQRCodeFromTab?.(content, qrContentType, qrOptions);
+  };
+
+  const applyTablePreset = (rows: number, columns: number) => {
+    setTableRows(rows);
+    setTableColumns(columns);
+  };
+
+  const equalizeColumnWidths = () => {
+    const average = tableColumnWidths.length
+      ? Math.max(24, Math.round(tableColumnWidths.reduce((sum, value) => sum + value, 0) / tableColumnWidths.length))
+      : DEFAULT_TABLE_COLUMN_WIDTH;
+    setTableColumnWidths(Array.from({ length: tableColumns }, () => average));
+  };
+
+  const equalizeRowHeights = () => {
+    const average = tableRowHeights.length
+      ? Math.max(24, Math.round(tableRowHeights.reduce((sum, value) => sum + value, 0) / tableRowHeights.length))
+      : DEFAULT_TABLE_ROW_HEIGHT;
+    setTableRowHeights(Array.from({ length: tableRows }, () => average));
+  };
+
+  const equalizeSelectedTableColumnWidths = () => {
+    const average = selectedTableColumnWidths.length
+      ? Math.max(24, Math.round(selectedTableColumnWidths.reduce((sum, value) => sum + value, 0) / selectedTableColumnWidths.length))
+      : DEFAULT_TABLE_COLUMN_WIDTH;
+    setSelectedTableColumnWidths(Array.from({ length: selectedTableColumns }, () => average));
+  };
+
+  const equalizeSelectedTableRowHeights = () => {
+    const average = selectedTableRowHeights.length
+      ? Math.max(24, Math.round(selectedTableRowHeights.reduce((sum, value) => sum + value, 0) / selectedTableRowHeights.length))
+      : DEFAULT_TABLE_ROW_HEIGHT;
+    setSelectedTableRowHeights(Array.from({ length: selectedTableRows }, () => average));
+  };
+
+  const applySelectedTableSettings = () => {
+    if (!canvas || !selectedTableObject || !isSelectedTableObject) return;
+
+    const oldTable = selectedTableObject as any;
+    const nextTable = ShapeFactory.createTable(
+      selectedTableRows,
+      selectedTableColumns,
+      selectedTableColumnWidths,
+      selectedTableRowHeights,
+      {
+        fillColor: selectedTableFillColor,
+        strokeColor: selectedTableStrokeColor,
+        strokeWidth: selectedTableStrokeWidth,
+      },
+    ) as any;
+
+    const preservedProps = {
+      left: oldTable.left,
+      top: oldTable.top,
+      scaleX: oldTable.scaleX,
+      scaleY: oldTable.scaleY,
+      angle: oldTable.angle,
+      opacity: oldTable.opacity,
+      flipX: oldTable.flipX,
+      flipY: oldTable.flipY,
+      selectable: oldTable.selectable,
+      evented: oldTable.evented,
+      lockMovementX: oldTable.lockMovementX,
+      lockMovementY: oldTable.lockMovementY,
+      lockScalingX: oldTable.lockScalingX,
+      lockScalingY: oldTable.lockScalingY,
+      lockRotation: oldTable.lockRotation,
+      hideObjectActions: oldTable.hideObjectActions,
+    };
+
+    nextTable.set(preservedProps);
+    nextTable.__layerId = oldTable.__layerId;
+    nextTable.__layerName = oldTable.__layerName;
+
+    canvas.remove(oldTable);
+    canvas.add(nextTable);
+    canvas.setActiveObject(nextTable);
+    canvas.renderAll();
+
+    triggerUpdate();
+    updateCanvasObjects?.();
+    onLockStateChange?.();
+  };
 
   const isSvgImage = selectedObject?.type === 'image' && Boolean((selectedObject as any)?.__isSvgUpload);
 
@@ -480,6 +1016,14 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
     backgroundImageInputRef.current?.click();
   };
 
+  const rememberRecentBackgroundColor = useCallback((color: string) => {
+    const normalized = toHexColor(color);
+    setRecentBackgroundColors((prev) => {
+      const deduped = [normalized, ...prev.filter((item) => item.toLowerCase() !== normalized.toLowerCase())];
+      return deduped.slice(0, 8);
+    });
+  }, []);
+
   const handleBackgroundImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && canvas) {
@@ -503,6 +1047,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
             // Set as background image
             canvas.backgroundImage = img;
             canvas.renderAll();
+            updateCanvasObjects?.();
+            onObjectUpdate?.();
           }).catch(() => {
             // Error loading background image
           });
@@ -518,15 +1064,20 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
     if (canvas) {
       canvas.backgroundImage = null;
       canvas.renderAll();
+      updateCanvasObjects?.();
+      onObjectUpdate?.();
     }
   };
 
   const updateBackgroundColor = (color: string) => {
     setBackgroundColor(color);
+    rememberRecentBackgroundColor(color);
     if (canvas && !backgroundGradientEnabled) {
       // Fabric v6: use backgroundColor property and renderAll
       canvas.backgroundColor = color;
       canvas.renderAll();
+      updateCanvasObjects?.();
+      onObjectUpdate?.();
     }
   };
 
@@ -825,7 +1376,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
   };
 
   return (
-    <div className={`${className} bg-white border-l border-gray-200 h-full flex flex-col`}>
+    <div className={`${className} bg-white ${isFloating ? '' : 'border-l border-gray-200'} h-full flex flex-col`}>
       {/* Hidden file input for background image upload */}
       <input
         ref={backgroundImageInputRef}
@@ -837,27 +1388,108 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
       
       {/* Tab Headers */}
       <div className="border-b border-gray-200 flex-shrink-0">
-        <div className="flex">
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex-1 py-3 text-sm font-medium text-center ${
-              activeTab === 'settings'
-                ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
-                : 'text-gray-500 hover:text-gray-700 bg-gray-50'
-            }`}
-          >
-            Settings
-          </button>
-          <button
-            onClick={() => setActiveTab('styles')}
-            className={`flex-1 py-3 text-sm font-medium text-center ${
-              activeTab === 'styles'
-                ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
-                : 'text-gray-500 hover:text-gray-700 bg-gray-50'
-            }`}
-          >
-            Styles
-          </button>
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns: `repeat(${(hideCoreTabsForBackground ? 0 : 3) + (showShapesTab ? 1 : 0) + (showQrTab ? 1 : 0) + (showTablesTab ? 1 : 0) + (showImagesTab ? 1 : 0) + (showBackgroundTab ? 1 : 0)}, minmax(0, 1fr))`,
+          }}
+        >
+          {!hideCoreTabsForBackground && (
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex-1 py-3 text-sm font-medium text-center ${
+                activeTab === 'settings'
+                  ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
+                  : 'text-gray-500 hover:text-gray-700 bg-gray-50'
+              }`}
+            >
+              Settings
+            </button>
+          )}
+          {!hideCoreTabsForBackground && (
+            <button
+              onClick={() => setActiveTab('styles')}
+              className={`flex-1 py-3 text-sm font-medium text-center ${
+                activeTab === 'styles'
+                  ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
+                  : 'text-gray-500 hover:text-gray-700 bg-gray-50'
+              }`}
+            >
+              Styles
+            </button>
+          )}
+          {!hideCoreTabsForBackground && (
+            <button
+              onClick={() => setActiveTab('layers')}
+              className={`flex-1 py-3 text-sm font-medium text-center ${
+                activeTab === 'layers'
+                  ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
+                  : 'text-gray-500 hover:text-gray-700 bg-gray-50'
+              }`}
+            >
+              Layers
+            </button>
+          )}
+          {showShapesTab && (
+            <button
+              onClick={() => setActiveTab('shapes')}
+              className={`flex-1 py-3 text-sm font-medium text-center ${
+                activeTab === 'shapes'
+                  ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
+                  : 'text-gray-500 hover:text-gray-700 bg-gray-50'
+              }`}
+            >
+              Shapes
+            </button>
+          )}
+          {showQrTab && (
+            <button
+              onClick={() => setActiveTab('qrcode')}
+              className={`flex-1 py-3 text-sm font-medium text-center ${
+                activeTab === 'qrcode'
+                  ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
+                  : 'text-gray-500 hover:text-gray-700 bg-gray-50'
+              }`}
+            >
+              QR
+            </button>
+          )}
+          {showTablesTab && (
+            <button
+              onClick={() => setActiveTab('tables')}
+              className={`flex-1 py-3 text-sm font-medium text-center ${
+                activeTab === 'tables'
+                  ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
+                  : 'text-gray-500 hover:text-gray-700 bg-gray-50'
+              }`}
+            >
+              Tables
+            </button>
+          )}
+          {showImagesTab && (
+            <button
+              onClick={() => setActiveTab('images')}
+              className={`flex-1 py-3 text-sm font-medium text-center ${
+                activeTab === 'images'
+                  ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
+                  : 'text-gray-500 hover:text-gray-700 bg-gray-50'
+              }`}
+            >
+              Images
+            </button>
+          )}
+          {showBackgroundTab && (
+            <button
+              onClick={() => setActiveTab('background')}
+              className={`flex-1 py-3 text-sm font-medium text-center ${
+                activeTab === 'background'
+                  ? 'text-cyan-600 border-b-2 border-cyan-600 bg-white'
+                  : 'text-gray-500 hover:text-gray-700 bg-gray-50'
+              }`}
+            >
+              Background
+            </button>
+          )}
         </div>
       </div>
 
@@ -871,6 +1503,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                 {/* Object Information */}
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-3">
+                    {isSelectedTableObject && 'Table Object'}
                     {selectedObject.type === 'text' && 'Text Object'}
                     {selectedObject.type === 'rect' && 'Rectangle Object'}
                     {selectedObject.type === 'line' && 'Line Object'}
@@ -1242,6 +1875,159 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                         </div>
                       </div>
                     )}
+
+                    {isSelectedTableObject && (
+                      <div className="space-y-4 pt-2 border-t border-gray-200">
+                        <div>
+                          <h5 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Table Structure</h5>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Rows</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="50"
+                                value={selectedTableRows}
+                                onChange={(e) => setSelectedTableRows(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Columns</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="50"
+                                value={selectedTableColumns}
+                                onChange={(e) => setSelectedTableColumns(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs text-gray-500">Column Widths</label>
+                            <button
+                              onClick={equalizeSelectedTableColumnWidths}
+                              className="text-[10px] px-2 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
+                            >
+                              Equalize
+                            </button>
+                          </div>
+                          <div className="max-h-28 overflow-y-auto space-y-1 border border-gray-200 rounded p-2 bg-gray-50">
+                            {selectedTableColumnWidths.map((width, index) => (
+                              <div key={`settings-col-${index}`} className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-500 w-12">C{index + 1}</span>
+                                <input
+                                  type="number"
+                                  min="24"
+                                  max="1000"
+                                  value={width}
+                                  onChange={(e) => {
+                                    const next = Math.max(24, Math.min(1000, Number(e.target.value) || 24));
+                                    setSelectedTableColumnWidths((prev) => prev.map((value, i) => (i === index ? next : value)));
+                                  }}
+                                  className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 bg-white"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs text-gray-500">Row Heights</label>
+                            <button
+                              onClick={equalizeSelectedTableRowHeights}
+                              className="text-[10px] px-2 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
+                            >
+                              Equalize
+                            </button>
+                          </div>
+                          <div className="max-h-28 overflow-y-auto space-y-1 border border-gray-200 rounded p-2 bg-gray-50">
+                            {selectedTableRowHeights.map((height, index) => (
+                              <div key={`settings-row-${index}`} className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-500 w-12">R{index + 1}</span>
+                                <input
+                                  type="number"
+                                  min="24"
+                                  max="1000"
+                                  value={height}
+                                  onChange={(e) => {
+                                    const next = Math.max(24, Math.min(1000, Number(e.target.value) || 24));
+                                    setSelectedTableRowHeights((prev) => prev.map((value, i) => (i === index ? next : value)));
+                                  }}
+                                  className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 bg-white"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <h5 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Table Style</h5>
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Fill Color</label>
+                              <div className="flex items-center space-x-2">
+                                <input
+                                  type="color"
+                                  value={selectedTableFillColor}
+                                  onChange={(e) => setSelectedTableFillColor(e.target.value)}
+                                  className="w-8 h-8 border-2 border-gray-300 rounded cursor-pointer"
+                                />
+                                <input
+                                  type="text"
+                                  value={selectedTableFillColor}
+                                  onChange={(e) => setSelectedTableFillColor(e.target.value)}
+                                  className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Border Color</label>
+                              <div className="flex items-center space-x-2">
+                                <input
+                                  type="color"
+                                  value={selectedTableStrokeColor}
+                                  onChange={(e) => setSelectedTableStrokeColor(e.target.value)}
+                                  className="w-8 h-8 border-2 border-gray-300 rounded cursor-pointer"
+                                />
+                                <input
+                                  type="text"
+                                  value={selectedTableStrokeColor}
+                                  onChange={(e) => setSelectedTableStrokeColor(e.target.value)}
+                                  className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Border Width</label>
+                              <input
+                                type="number"
+                                min="0.5"
+                                max="12"
+                                step="0.5"
+                                value={selectedTableStrokeWidth}
+                                onChange={(e) => setSelectedTableStrokeWidth(Math.max(0.5, Math.min(12, Number(e.target.value) || 0.5)))}
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={applySelectedTableSettings}
+                          className="w-full px-3 py-2 text-sm font-medium rounded bg-cyan-600 text-white hover:bg-cyan-700"
+                        >
+                          Apply Table Changes
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1508,6 +2294,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
             {selectedObject ? (
               <div className="space-y-4">
                 <h4 className="text-sm font-medium text-gray-700">
+                  {isSelectedTableObject && 'Table Properties'}
                   {selectedObject.type === 'text' && 'Text Properties'}
                   {selectedObject.type === 'rect' && 'Rectangle Properties'}
                   {selectedObject.type === 'line' && 'Line Properties'}
@@ -2321,6 +3108,151 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Table Object Properties */}
+                {isSelectedTableObject && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Rows</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={selectedTableRows}
+                          onChange={(e) => setSelectedTableRows(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Columns</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={selectedTableColumns}
+                          onChange={(e) => setSelectedTableColumns(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs text-gray-500">Column Widths</label>
+                        <button
+                          onClick={equalizeSelectedTableColumnWidths}
+                          className="text-[10px] px-2 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
+                        >
+                          Equalize
+                        </button>
+                      </div>
+                      <div className="max-h-28 overflow-y-auto space-y-1 border border-gray-200 rounded p-2 bg-gray-50">
+                        {selectedTableColumnWidths.map((width, index) => (
+                          <div key={`styles-col-${index}`} className="flex items-center gap-2">
+                            <span className="text-[10px] text-gray-500 w-12">C{index + 1}</span>
+                            <input
+                              type="number"
+                              min="24"
+                              max="1000"
+                              value={width}
+                              onChange={(e) => {
+                                const next = Math.max(24, Math.min(1000, Number(e.target.value) || 24));
+                                setSelectedTableColumnWidths((prev) => prev.map((value, i) => (i === index ? next : value)));
+                              }}
+                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 bg-white"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs text-gray-500">Row Heights</label>
+                        <button
+                          onClick={equalizeSelectedTableRowHeights}
+                          className="text-[10px] px-2 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
+                        >
+                          Equalize
+                        </button>
+                      </div>
+                      <div className="max-h-28 overflow-y-auto space-y-1 border border-gray-200 rounded p-2 bg-gray-50">
+                        {selectedTableRowHeights.map((height, index) => (
+                          <div key={`styles-row-${index}`} className="flex items-center gap-2">
+                            <span className="text-[10px] text-gray-500 w-12">R{index + 1}</span>
+                            <input
+                              type="number"
+                              min="24"
+                              max="1000"
+                              value={height}
+                              onChange={(e) => {
+                                const next = Math.max(24, Math.min(1000, Number(e.target.value) || 24));
+                                setSelectedTableRowHeights((prev) => prev.map((value, i) => (i === index ? next : value)));
+                              }}
+                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 bg-white"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Fill Color</label>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="color"
+                          value={selectedTableFillColor}
+                          onChange={(e) => setSelectedTableFillColor(e.target.value)}
+                          className="w-8 h-8 border-2 border-gray-300 rounded cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={selectedTableFillColor}
+                          onChange={(e) => setSelectedTableFillColor(e.target.value)}
+                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                          placeholder="#ffffff"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Border Color</label>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="color"
+                          value={selectedTableStrokeColor}
+                          onChange={(e) => setSelectedTableStrokeColor(e.target.value)}
+                          className="w-8 h-8 border-2 border-gray-300 rounded cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={selectedTableStrokeColor}
+                          onChange={(e) => setSelectedTableStrokeColor(e.target.value)}
+                          className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                          placeholder="#111827"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Border Width</label>
+                      <input
+                        type="number"
+                        min="0.5"
+                        max="12"
+                        step="0.5"
+                        value={selectedTableStrokeWidth}
+                        onChange={(e) => setSelectedTableStrokeWidth(Math.max(0.5, Math.min(12, Number(e.target.value) || 0.5)))}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                      />
+                    </div>
+                    <button
+                      onClick={applySelectedTableSettings}
+                      className="w-full px-3 py-2 text-sm font-medium rounded bg-cyan-600 text-white hover:bg-cyan-700"
+                    >
+                      Apply Table Changes
+                    </button>
+                  </div>
+                )}
                 
                 {/* Alignment Guides Settings */}
                 {editorMode === 'dev' && alignmentGuides && (
@@ -2466,6 +3398,553 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
 
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'layers' && (
+          <div className="h-full">
+            <LeftSidebar
+              objects={layerObjects}
+              selectedObjectId={selectedLayerObjectId}
+              onSelectObject={(objectId) => onSelectLayerObject?.(objectId)}
+              onToggleVisibility={(objectId) => onToggleLayerVisibility?.(objectId)}
+              onDeleteObject={(objectId) => onDeleteLayerObject?.(objectId)}
+              onReorderObjects={onReorderLayerObjects}
+              onRenameObject={onRenameLayerObject}
+              showMainTools={false}
+              showLayers
+              showBorder={false}
+              className="w-full"
+            />
+          </div>
+        )}
+
+        {showBackgroundTab && activeTab === 'background' && (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-1">Background Options</h4>
+              <p className="text-xs text-gray-500">Set canvas background color or image.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Color Picker</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="color"
+                  aria-label="Background Color"
+                  value={backgroundColor}
+                  onChange={(e) => updateBackgroundColor(e.target.value)}
+                  className="w-9 h-9 border-2 border-gray-300 rounded cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={backgroundColor}
+                  onChange={(e) => updateBackgroundColor(e.target.value)}
+                  className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                  placeholder="#ffffff"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-2">Preset Colors</label>
+              <div className="grid grid-cols-5 gap-2">
+                {BACKGROUND_PRESET_COLORS.map((color) => (
+                  <button
+                    key={`preset-${color}`}
+                    onClick={() => updateBackgroundColor(color)}
+                    className="h-7 w-full rounded border border-gray-300"
+                    style={{ backgroundColor: color }}
+                    title={color}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 mb-2">Recent Colors</label>
+              {recentBackgroundColors.length > 0 ? (
+                <div className="grid grid-cols-5 gap-2">
+                  {recentBackgroundColors.map((color) => (
+                    <button
+                      key={`recent-${color}`}
+                      onClick={() => updateBackgroundColor(color)}
+                      className="h-7 w-full rounded border border-gray-300"
+                      style={{ backgroundColor: color }}
+                      title={color}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[11px] text-gray-400 border border-dashed border-gray-300 rounded p-2">
+                  No recent colors yet.
+                </div>
+              )}
+            </div>
+
+            <div className="pt-1 space-y-2">
+              <button
+                onClick={handleBackgroundImageUpload}
+                className="flex items-center justify-center space-x-2 w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                <Upload size={16} />
+                <span>Upload Image As Background</span>
+              </button>
+              <button
+                onClick={removeBackgroundImage}
+                className="flex items-center justify-center space-x-2 w-full px-3 py-2 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50"
+              >
+                <Trash2 size={16} />
+                <span>Remove Background Image</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showImagesTab && activeTab === 'images' && (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Image Library</h4>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onUploadImageRequest}
+                  className="flex items-center justify-center space-x-2 px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  <Upload size={16} />
+                  <span>Upload Image</span>
+                </button>
+                {uploadedImages.length > 0 && (
+                  <button
+                    onClick={onClearUploadedImages}
+                    className="px-3 py-2 text-xs text-red-600 border border-red-300 rounded-md hover:bg-red-50"
+                  >
+                    Clear All
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {uploadedImages.length === 0 ? (
+              <div className="rounded-md border border-dashed border-gray-300 p-4 text-xs text-gray-500">
+                No uploaded images yet. Use Upload Image to add images here.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {uploadedImages.map((item) => (
+                  <div key={item.id} className="rounded-md border border-gray-200 p-2 bg-white">
+                    <button
+                      onClick={() => onAddUploadedImageToCanvas?.(item.id)}
+                      className="w-full text-left"
+                      title="Click to add to canvas"
+                    >
+                      <div className="w-full aspect-square overflow-hidden rounded border border-gray-200 bg-gray-100 mb-2">
+                        <img
+                          src={item.dataUrl}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                          draggable={false}
+                        />
+                      </div>
+                      <div className="text-[11px] text-gray-700 truncate" title={item.name}>{item.name}</div>
+                    </button>
+                    <button
+                      onClick={() => onRemoveUploadedImage?.(item.id)}
+                      className="mt-2 w-full px-2 py-1 text-[11px] text-red-600 border border-red-300 rounded hover:bg-red-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {showShapesTab && activeTab === 'shapes' && (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Shapes</h4>
+              <p className="text-xs text-gray-500 mb-1">Select a shape to add it to canvas.</p>
+              <p className="text-[11px] text-gray-400">{ALL_SHAPE_TAB_ITEMS.length} shapes available</p>
+            </div>
+
+            <div className="space-y-4">
+              {SHAPE_TAB_CATEGORIES.map((category) => (
+                <section key={category.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{category.name}</h5>
+                    <span className="text-[10px] text-gray-400">{category.shapes.length}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {category.shapes.map((shape) => (
+                      <button
+                        key={shape.type}
+                        onClick={() => onAddShapeFromTab?.(shape.type)}
+                        className="px-2 py-2 text-xs border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                      >
+                        <div className="w-full h-14 mb-2 rounded border border-gray-200 bg-white flex items-center justify-center">
+                          <svg width="64" height="48" viewBox="0 0 64 48" aria-hidden="true">
+                            {renderShapePreview(shape.type)}
+                          </svg>
+                        </div>
+                        <div className="text-center leading-tight">{shape.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showQrTab && activeTab === 'qrcode' && (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">QR Code</h4>
+              <p className="text-xs text-gray-500">Create and insert QR code directly on canvas.</p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Type</label>
+                <select
+                  value={qrContentType}
+                  onChange={(e) => handleQrContentTypeChange(e.target.value as keyof QRCodeContent)}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                >
+                  <option value="URL">URL</option>
+                  <option value="Email">Email</option>
+                  <option value="Phone">Phone</option>
+                  <option value="SMS">SMS</option>
+                  <option value="VCard">VCard</option>
+                  <option value="Event">Event</option>
+                </select>
+              </div>
+
+              {qrContentType === 'URL' && (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Website URL</label>
+                  <input
+                    type="url"
+                    value={(qrContentData as QRCodeContent['URL']).url}
+                    onChange={(e) => setQrContentData({ url: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="https://brandcrowd.com/"
+                  />
+                </div>
+              )}
+
+              {qrContentType === 'Email' && (
+                <div className="space-y-2">
+                  <input
+                    type="email"
+                    value={(qrContentData as QRCodeContent['Email']).email}
+                    onChange={(e) => setQrContentData({ ...(qrContentData as QRCodeContent['Email']), email: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Email address"
+                  />
+                  <input
+                    type="text"
+                    value={(qrContentData as QRCodeContent['Email']).subject || ''}
+                    onChange={(e) => setQrContentData({ ...(qrContentData as QRCodeContent['Email']), subject: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Subject (optional)"
+                  />
+                </div>
+              )}
+
+              {qrContentType === 'Phone' && (
+                <input
+                  type="tel"
+                  value={(qrContentData as QRCodeContent['Phone']).phone}
+                  onChange={(e) => setQrContentData({ phone: e.target.value })}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                  placeholder="Phone number"
+                />
+              )}
+
+              {qrContentType === 'SMS' && (
+                <div className="space-y-2">
+                  <input
+                    type="tel"
+                    value={(qrContentData as QRCodeContent['SMS']).phone}
+                    onChange={(e) => setQrContentData({ ...(qrContentData as QRCodeContent['SMS']), phone: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Phone number"
+                  />
+                  <textarea
+                    value={(qrContentData as QRCodeContent['SMS']).message || ''}
+                    onChange={(e) => setQrContentData({ ...(qrContentData as QRCodeContent['SMS']), message: e.target.value })}
+                    rows={2}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Message (optional)"
+                  />
+                </div>
+              )}
+
+              {qrContentType === 'VCard' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={(qrContentData as QRCodeContent['VCard']).firstName}
+                    onChange={(e) => setQrContentData({ ...(qrContentData as QRCodeContent['VCard']), firstName: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="First name"
+                  />
+                  <input
+                    type="text"
+                    value={(qrContentData as QRCodeContent['VCard']).lastName}
+                    onChange={(e) => setQrContentData({ ...(qrContentData as QRCodeContent['VCard']), lastName: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Last name"
+                  />
+                </div>
+              )}
+
+              {qrContentType === 'Event' && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={(qrContentData as QRCodeContent['Event']).title}
+                    onChange={(e) => setQrContentData({ ...(qrContentData as QRCodeContent['Event']), title: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    placeholder="Event title"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={(qrContentData as QRCodeContent['Event']).startDate}
+                    onChange={(e) => setQrContentData({ ...(qrContentData as QRCodeContent['Event']), startDate: e.target.value })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Foreground</label>
+                  <input
+                    type="color"
+                    value={qrOptions.dotsOptions?.color || '#000000'}
+                    onChange={(e) => setQrOptions((prev) => ({
+                      ...prev,
+                      dotsOptions: { ...prev.dotsOptions, color: e.target.value },
+                      cornersSquareOptions: { ...prev.cornersSquareOptions, color: e.target.value },
+                      cornersDotOptions: { ...prev.cornersDotOptions, color: e.target.value },
+                      color: { ...(prev.color || {}), dark: e.target.value },
+                    }))}
+                    className="w-full h-9 border border-gray-300 rounded cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Background</label>
+                  <input
+                    type="color"
+                    value={qrOptions.backgroundOptions?.color || '#ffffff'}
+                    onChange={(e) => setQrOptions((prev) => ({
+                      ...prev,
+                      backgroundOptions: { ...prev.backgroundOptions, color: e.target.value },
+                      color: { ...(prev.color || {}), light: e.target.value },
+                    }))}
+                    className="w-full h-9 border border-gray-300 rounded cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Style</label>
+                <select
+                  value={qrOptions.dotsOptions?.type || 'square'}
+                  onChange={(e) => {
+                    const style = e.target.value as QRCodeOptions['dotsOptions'] extends { type?: infer T } ? T : string;
+                    setQrOptions((prev) => ({
+                      ...prev,
+                      dotsOptions: { ...prev.dotsOptions, type: style as any },
+                      style: style as any,
+                    }));
+                  }}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                >
+                  <option value="square">Square</option>
+                  <option value="rounded">Rounded</option>
+                  <option value="dots">Dots</option>
+                  <option value="classy">Classy</option>
+                  <option value="classy-rounded">Classy Rounded</option>
+                  <option value="extra-rounded">Extra Rounded</option>
+                </select>
+              </div>
+            </div>
+
+            {qrPreviewSvg && (
+              <div className="rounded border border-gray-200 bg-white p-3">
+                <div className="text-[11px] text-gray-500 mb-2">Preview</div>
+                <div className="mx-auto w-full max-w-[180px] aspect-square rounded border border-gray-100 bg-gray-50 p-2 flex items-center justify-center overflow-hidden">
+                  <img
+                    src={qrPreviewDataUrl}
+                    alt="QR preview"
+                    className="w-full h-full object-contain object-center"
+                    draggable={false}
+                  />
+                </div>
+              </div>
+            )}
+
+            {qrValidationErrors.length > 0 && (
+              <div className="rounded border border-red-200 bg-red-50 p-2">
+                {qrValidationErrors.map((error) => (
+                  <div key={error} className="text-[11px] text-red-700">{error}</div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={handleGenerateQrFromTab}
+              disabled={qrValidationErrors.length > 0}
+              className="w-full px-3 py-2 text-sm font-medium rounded bg-cyan-600 text-white hover:bg-cyan-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              Add QR Code
+            </button>
+          </div>
+        )}
+
+        {showTablesTab && activeTab === 'tables' && (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Tables</h4>
+              <p className="text-xs text-gray-500">Set rows and columns, then add a table to canvas.</p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs text-gray-500">Quick Presets</label>
+              <div className="grid grid-cols-4 gap-2">
+                {TABLE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    onClick={() => applyTablePreset(preset.rows, preset.columns)}
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Rows</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={tableRows}
+                  onChange={(e) => setTableRows(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Columns</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={tableColumns}
+                  onChange={(e) => setTableColumns(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                />
+              </div>
+            </div>
+
+            <div className="rounded border border-gray-200 bg-white p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] text-gray-500">Live Table Preview</span>
+                <span className="text-[11px] text-gray-400">{tableTotalWidth}px x {tableTotalHeight}px</span>
+              </div>
+              <div className="mx-auto w-full max-w-[220px] aspect-square border border-gray-100 rounded bg-gray-50 p-2">
+                <div
+                  className="w-full h-full grid border border-gray-700 bg-white"
+                  style={{
+                    gridTemplateColumns: tableColumnWidths.map((value) => `${value}fr`).join(' '),
+                    gridTemplateRows: tableRowHeights.map((value) => `${value}fr`).join(' '),
+                  }}
+                >
+                  {Array.from({ length: tableRows * tableColumns }, (_, index) => (
+                    <div
+                      key={`table-preview-cell-${index}`}
+                      className="border border-gray-700/70"
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs text-gray-500">Column Widths</label>
+                <button
+                  onClick={equalizeColumnWidths}
+                  className="text-[10px] px-2 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
+                >
+                  Equalize
+                </button>
+              </div>
+              <div className="max-h-36 overflow-y-auto space-y-2 border border-gray-200 rounded p-2 bg-gray-50">
+                {tableColumnWidths.map((width, index) => (
+                  <div key={`col-${index}`} className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 w-16">Col {index + 1}</span>
+                    <input
+                      type="number"
+                      min="24"
+                      max="1000"
+                      value={width}
+                      onChange={(e) => {
+                        const next = Math.max(24, Math.min(1000, Number(e.target.value) || 24));
+                        setTableColumnWidths((prev) => prev.map((value, i) => (i === index ? next : value)));
+                      }}
+                      className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 bg-white"
+                    />
+                    <span className="text-[10px] text-gray-400">px</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs text-gray-500">Row Heights</label>
+                <button
+                  onClick={equalizeRowHeights}
+                  className="text-[10px] px-2 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-50"
+                >
+                  Equalize
+                </button>
+              </div>
+              <div className="max-h-36 overflow-y-auto space-y-2 border border-gray-200 rounded p-2 bg-gray-50">
+                {tableRowHeights.map((height, index) => (
+                  <div key={`row-${index}`} className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 w-16">Row {index + 1}</span>
+                    <input
+                      type="number"
+                      min="24"
+                      max="1000"
+                      value={height}
+                      onChange={(e) => {
+                        const next = Math.max(24, Math.min(1000, Number(e.target.value) || 24));
+                        setTableRowHeights((prev) => prev.map((value, i) => (i === index ? next : value)));
+                      }}
+                      className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500 bg-white"
+                    />
+                    <span className="text-[10px] text-gray-400">px</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => onAddTableFromTab?.(tableRows, tableColumns, tableColumnWidths, tableRowHeights)}
+              className="w-full px-3 py-2 text-sm font-medium rounded bg-cyan-600 text-white hover:bg-cyan-700"
+            >
+              Add Table
+            </button>
           </div>
         )}
         </div>
