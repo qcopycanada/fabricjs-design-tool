@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Canvas } from 'fabric';
+import { Trash2 } from '../utils/icons';
 
 interface CanvasMockup {
   url: string;
@@ -65,6 +66,7 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
     width: number;
     height: number;
   } | null>(null);
+  const [floatingDeletePosition, setFloatingDeletePosition] = useState<{ left: number; top: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeHandle, setResizeHandle] = useState<string>('');
@@ -665,6 +667,68 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
   useEffect(() => {
     if (!canvas) return;
 
+    const updateFloatingDeleteBar = () => {
+      const activeObject = canvas.getActiveObject();
+      if (!activeObject) {
+        setFloatingDeletePosition(null);
+        return;
+      }
+
+      const bounds = activeObject.getBoundingRect();
+      const nextLeft = Math.max(6, Math.min(canvasDimensions.width - 34, bounds.left + bounds.width - 14));
+      const nextTop = Math.max(6, bounds.top - 34);
+
+      setFloatingDeletePosition({ left: nextLeft, top: nextTop });
+    };
+
+    const clearFloatingDeleteBar = () => {
+      setFloatingDeletePosition(null);
+    };
+
+    canvas.on('selection:created', updateFloatingDeleteBar);
+    canvas.on('selection:updated', updateFloatingDeleteBar);
+    canvas.on('selection:cleared', clearFloatingDeleteBar);
+    canvas.on('object:moving', updateFloatingDeleteBar);
+    canvas.on('object:scaling', updateFloatingDeleteBar);
+    canvas.on('object:rotating', updateFloatingDeleteBar);
+    canvas.on('object:modified', updateFloatingDeleteBar);
+
+    // Sync initial state after re-renders and canvas switches.
+    updateFloatingDeleteBar();
+
+    return () => {
+      canvas.off('selection:created', updateFloatingDeleteBar);
+      canvas.off('selection:updated', updateFloatingDeleteBar);
+      canvas.off('selection:cleared', clearFloatingDeleteBar);
+      canvas.off('object:moving', updateFloatingDeleteBar);
+      canvas.off('object:scaling', updateFloatingDeleteBar);
+      canvas.off('object:rotating', updateFloatingDeleteBar);
+      canvas.off('object:modified', updateFloatingDeleteBar);
+    };
+  }, [canvas, canvasDimensions.height, canvasDimensions.width]);
+
+  const deleteSelectedObjects = () => {
+    if (!canvas) return;
+
+    const activeObject = canvas.getActiveObject() as any;
+    if (!activeObject) return;
+
+    if (activeObject.type === 'activeSelection' && typeof activeObject.getObjects === 'function') {
+      const selected = activeObject.getObjects();
+      canvas.discardActiveObject();
+      selected.forEach((obj: any) => canvas.remove(obj));
+    } else {
+      canvas.remove(activeObject);
+      canvas.discardActiveObject();
+    }
+
+    canvas.requestRenderAll();
+    setFloatingDeletePosition(null);
+  };
+
+  useEffect(() => {
+    if (!canvas) return;
+
     let dragStart: { x: number; y: number } | null = null;
 
     const handleMouseDown = (event: any) => {
@@ -861,6 +925,25 @@ const CanvasWrapper: React.FC<CanvasWrapperProps> = ({
                 zIndex: 7,
               }}
             />
+          )}
+
+          {floatingDeletePosition && (
+            <button
+              type="button"
+              onClick={deleteSelectedObjects}
+              className="absolute h-7 w-7 rounded-md border border-red-300 bg-white text-red-600 shadow-md hover:bg-red-50"
+              style={{
+                left: `${floatingDeletePosition.left}px`,
+                top: `${floatingDeletePosition.top}px`,
+                zIndex: 11,
+              }}
+              title="Delete selected"
+              aria-label="Delete selected"
+            >
+              <span className="flex items-center justify-center">
+                <Trash2 size={14} />
+              </span>
+            </button>
           )}
 
           {shouldRenderSafeArea && (

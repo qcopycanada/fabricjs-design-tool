@@ -1672,7 +1672,7 @@ function App() {
             onAddParallelogram={addParallelogram}
             onAddTrapezoid={addTrapezoid}
             onAddOctagonShape={addOctagonShape}
-            className="w-64"
+            className="w-24"
           />
         </div>
         

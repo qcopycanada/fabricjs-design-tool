@@ -127,7 +127,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onAddParallelogram,
   onAddTrapezoid,
   onAddOctagonShape,
-  className = 'w-64'
+  className = 'w-24'
 }) => {
   const [draggedObjectId, setDraggedObjectId] = useState<string | null>(null);
   const [dropTargetObjectId, setDropTargetObjectId] = useState<string | null>(null);
@@ -355,8 +355,8 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
   return (
     <div className={`${className} bg-white ${showBorder ? 'border-r border-gray-200' : ''} h-full flex flex-col`}>
       {showMainTools && (
-        <div className="p-4 border-b border-gray-200 flex-shrink-0">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Tools</h3>
+        <div className="p-3 border-b border-gray-200 flex-shrink-0">
+          <h3 className="text-xs font-semibold text-gray-700 mb-2">Tools</h3>
           <div className="space-y-2">
             <button
               onClick={() => {
@@ -365,11 +365,11 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 onMainToolUsed?.();
               }}
               aria-label="Text"
-              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'text' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`h-16 w-full rounded-md flex flex-col items-center justify-center gap-1 px-2 ${selectedTool === 'text' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
               title="Text"
             >
               <Type size={18} />
-              <span className="text-sm font-medium">Text</span>
+              <span className="text-[11px] font-medium leading-none">Text</span>
             </button>
 
             <button
@@ -383,11 +383,11 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 onMainToolUsed?.();
               }}
               aria-label="Image"
-              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'image' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`h-16 w-full rounded-md flex flex-col items-center justify-center gap-1 px-2 ${selectedTool === 'image' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
               title="Image"
             >
               <Image size={18} />
-              <span className="text-sm font-medium">Upload</span>
+              <span className="text-[11px] font-medium leading-none">Upload</span>
             </button>
 
             <button
@@ -401,11 +401,11 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 onMainToolUsed?.();
               }}
               aria-label="QR Code"
-              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'qrcode' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`h-16 w-full rounded-md flex flex-col items-center justify-center gap-1 px-2 ${selectedTool === 'qrcode' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
               title="QR Code"
             >
               <QrCode size={18} />
-              <span className="text-sm font-medium">QR Code</span>
+              <span className="text-[11px] font-medium leading-none">QR Code</span>
             </button>
 
             <button
@@ -417,11 +417,11 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 onMainToolUsed?.();
               }}
               aria-label="Tables"
-              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'table' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`h-16 w-full rounded-md flex flex-col items-center justify-center gap-1 px-2 ${selectedTool === 'table' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
               title="Tables"
             >
               <Grid size={18} />
-              <span className="text-sm font-medium">Tables</span>
+              <span className="text-[11px] font-medium leading-none">Tables</span>
             </button>
 
             <button
@@ -433,11 +433,11 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 onMainToolUsed?.();
               }}
               aria-label="Background"
-              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${selectedTool === 'background' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`h-16 w-full rounded-md flex flex-col items-center justify-center gap-1 px-2 ${selectedTool === 'background' ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
               title="Background"
             >
               <Settings size={18} />
-              <span className="text-sm font-medium">Background</span>
+              <span className="text-[11px] font-medium leading-none">Background</span>
             </button>
 
             <button
@@ -451,11 +451,11 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 }
               }}
               aria-label="Shapes"
-              className={`h-10 w-full rounded-md flex items-center gap-2 px-3 ${shapeToolKeys.includes(selectedTool) ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`h-16 w-full rounded-md flex flex-col items-center justify-center gap-1 px-2 ${shapeToolKeys.includes(selectedTool) ? 'bg-cyan-100 text-cyan-700' : 'text-gray-600 hover:bg-gray-100'}`}
               title="Shapes"
             >
               <Shapes size={18} />
-              <span className="text-sm font-medium">Shapes</span>
+              <span className="text-[11px] font-medium leading-none">Shapes</span>
             </button>
           </div>
         </div>
